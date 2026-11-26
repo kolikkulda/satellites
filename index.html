@@ -76,6 +76,11 @@
         <ul id="selGws" class="list click"></ul>
       </section>
 
+      <div class="eyebox">
+        <label class="switch small"><input type="checkbox" id="eyeOnly"><span data-i18n="vis.filter"></span></label>
+        <span class="sun" id="sunInfo"></span>
+      </div>
+      <div id="eyeTip" hidden><p class="hint" data-i18n="vis.tip"></p><p class="hint" data-i18n="vis.faint"></p></div>
       <input id="filter" type="search" data-i18n-ph="sky.searchPh">
       <div class="tablewrap">
         <table id="visTable">
@@ -90,10 +95,23 @@
     <div class="tabpanel" id="tab-dish" hidden>
       <p class="lead" data-i18n="dish.intro"></p>
       <label class="switch"><input type="checkbox" id="dishOn"><span data-i18n="dish.enable"></span></label>
-      <div class="row coords three">
-        <label><span data-i18n="dish.az"></span><input id="dishAz" type="number" min="0" max="360" step="1"></label>
-        <label><span data-i18n="dish.el"></span><input id="dishEl" type="number" min="0" max="90" step="1"></label>
-        <label><span data-i18n="dish.fov"></span><input id="dishFov" type="number" min="20" max="160" step="1"></label>
+      <div class="dishfields">
+        <div class="field">
+          <label for="dishAz" data-i18n="dish.az"></label>
+          <input id="dishAz" type="text" inputmode="decimal" autocomplete="off">
+          <p class="where" data-i18n-html="dish.azWhereHtml"></p>
+        </div>
+        <div class="field">
+          <label for="dishEl" data-i18n="dish.el"></label>
+          <input id="dishEl" type="text" inputmode="decimal" autocomplete="off">
+          <p class="where" data-i18n-html="dish.elWhereHtml"></p>
+        </div>
+        <div class="field">
+          <label for="dishFov" data-i18n="dish.fov"></label>
+          <input id="dishFov" type="text" inputmode="decimal" autocomplete="off">
+          <p class="where" data-i18n-html="dish.fovWhereHtml"></p>
+        </div>
+        <p class="warnbox soft" data-i18n-html="dish.notDesiredHtml"></p>
       </div>
       <p class="hint" data-i18n="dish.default"></p>
       <p class="warnbox" id="dishNeedLoc" hidden data-i18n="dish.needLoc"></p>
@@ -108,13 +126,13 @@
       <ul id="candList" class="list click"></ul>
       <p class="hint" data-i18n="dish.disclaimer"></p>
 
-      <details class="how">
+      <details class="how" open>
         <summary data-i18n="dish.how"></summary>
         <ol>
-          <li data-i18n="dish.how1"></li>
-          <li data-i18n="dish.how2"></li>
-          <li data-i18n="dish.how3"></li>
-          <li data-i18n="dish.how4"></li>
+          <li data-i18n-html="dish.how1Html"></li>
+          <li data-i18n-html="dish.how2Html"></li>
+          <li data-i18n-html="dish.how3Html"></li>
+          <li data-i18n-html="dish.how4Html"></li>
         </ol>
       </details>
     </div>
@@ -159,6 +177,11 @@
 
   <main id="mapwrap">
     <div id="map"></div>
+    <div id="globe" hidden></div>
+    <div id="viewSwitch" class="float" role="tablist">
+      <button data-view="map" class="on" data-i18n="view.map"></button>
+      <button data-view="globe" data-i18n="view.globe"></button>
+    </div>
     <canvas id="satCanvas"></canvas>
     <div id="sky" class="float">
       <div class="floathead"><span data-i18n="skyplot.title"></span><button id="skyToggle" class="x">–</button></div>

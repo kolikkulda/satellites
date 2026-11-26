@@ -4,12 +4,16 @@
 import * as S from './vendor/satellite.esm.js';
 import { t, LANGS, detectLang, setLang, getLang, applyStatic } from './i18n.js';
 import { TZ_REGIONS } from './tz-regions.js';
+import { initGlobe } from './globe.js';
 
 const R_EARTH = 6371.0;
 const DEG = Math.PI / 180;
 const GW_MIN_EL = 25;            // minimální elevace satelitu viděného z pozemní brány
 const DATA_MAX_AGE = 2 * 3600e3; // CelesTrak data mění jednou za 2 h a častější stahování blokuje
 const GW_MAX_AGE = 24 * 3600e3;
+const AU_KM = 149597870.7;
+const EYE_SUN_MAX = -6;          // Slunce aspoň 6° pod obzorem (občanský soumrak)
+const EYE_SAT_MIN = 10;          // satelit aspoň 10° nad obzorem
 const CACHE_NAME = 'satview-v1';
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -56,11 +60,12 @@ const state = {
   tab: saved.tab || 'sky',
   speed: 1, baseReal: Date.now(), baseSim: Date.now(),
   selected: null, picking: null, filter: '',
+  eyeOnly: !!saved.eyeOnly, view: 'map',
 };
 setLang(detectLang(saved.lang));
 const persist = () => store.set({
   obs: state.obs.kind === 'region' ? null : state.obs, minEl: state.minEl, groups: state.groups, toggles: state.toggles,
-  customGws: state.customGws, base: state.base, dish: state.dish, tab: state.tab, lang: getLang() });
+  customGws: state.customGws, base: state.base, dish: state.dish, tab: state.tab, lang: getLang(), eyeOnly: state.eyeOnly });
 const simNow = () => new Date(state.baseSim + (Date.now() - state.baseReal) * state.speed);
 
 let sats = [];
@@ -69,6 +74,8 @@ let gateways = [], pops = [];
 let passes = [], passesFor = null;
 let medianAlt = 550;
 let candidates = [];
+let sunEl = 0, eyeCount = 0;
+let globe = null, globeLoading = false;
 
 // ---------- formátování ----------
 const nf = (d = 0) => new Intl.NumberFormat(getLang(), { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -296,6 +303,7 @@ function renderGatewayMarkers() {
       .addTo(popLayer);
   }
   renderNearGateways();
+  globe?.setGateways(allGateways().filter(g => g.status !== 'planned' || state.toggles.gwPlanned));
 }
 
 function gatewayPopup(g) {
@@ -334,6 +342,20 @@ function handoverInfo(date) {
   return rem;
 }
 
+// ---------- Slunce a viditelnost okem ----------
+function sunAt(date) {
+  const r = S.sunPos(S.jday(date)).rsun; // AU v ECI
+  const eciKm = { x: r.x * AU_KM, y: r.y * AU_KM, z: r.z * AU_KM };
+  const la = S.ecfToLookAngles({ latitude: state.obs.lat * DEG, longitude: state.obs.lon * DEG, height: 0 }, S.eciToEcf(eciKm, S.gstime(date)));
+  return { rsun: r, el: la.elevation / DEG };
+}
+// 'eye' = viditelný okem, 'day' = na slunci, ale u pozorovatele je den, 'low' = na slunci, ale nízko, 'shadow' = ve stínu Země
+function lightState(sun, eci, el) {
+  if (S.shadowFraction(sun.rsun, eci) >= 0.5) return 'shadow';
+  if (sun.el > EYE_SUN_MAX) return 'day';
+  return el >= EYE_SAT_MIN ? 'eye' : 'low';
+}
+
 // ---------- výpočet poloh ----------
 function propagateAll(date) {
   const gmst = S.gstime(date);
@@ -345,19 +367,27 @@ function propagateAll(date) {
     const gd = S.eciToGeodetic(pv.position, gmst);
     s.lat = gd.latitude / DEG; s.lon = normLon(gd.longitude / DEG); s.alt = gd.height;
     if (s.alt < 80) { s.ok = false; continue; }
-    s.ok = true;
+    s.ok = true; s.eci = pv.position; s.light = null;
+    if (globe) s.ecf = S.eciToEcf(pv.position, gmst);
     const v = pv.velocity; s.vel = Math.hypot(v.x, v.y, v.z);
     const lam = centralAngle(o.lat, o.lon, s.lat, s.lon);
     if (lam > Math.acos(R_EARTH / (R_EARTH + s.alt)) + 0.01) { s.el = -90; continue; }
     const la = S.ecfToLookAngles(obsGd, S.eciToEcf(pv.position, gmst));
     s.el = la.elevation / DEG; s.az = la.azimuth / DEG; s.range = la.rangeSat;
   }
+  const sun = sunAt(date);
+  sunEl = sun.el; eyeCount = 0;
+  for (const s of sats) {
+    if (!s.ok || s.el < 0) continue;
+    s.light = lightState(sun, s.eci, s.el);
+    if (s.light === 'eye') eyeCount++;
+  }
 }
 function lookAt(s, date) {
   const pv = S.propagate(s.satrec, date);
   if (!pv || !pv.position) return null;
   const la = S.ecfToLookAngles({ latitude: state.obs.lat * DEG, longitude: state.obs.lon * DEG, height: 0.3 }, S.eciToEcf(pv.position, S.gstime(date)));
-  return { el: la.elevation / DEG, az: la.azimuth / DEG };
+  return { el: la.elevation / DEG, az: la.azimuth / DEG, eci: pv.position };
 }
 function computePasses(s, from) {
   const out = [], step = 20e3, end = from.getTime() + 24 * 3600e3;
@@ -366,8 +396,12 @@ function computePasses(s, from) {
     const l = lookAt(s, new Date(tm));
     if (!l) break;
     if (l.el >= 0) {
-      if (!cur) cur = { start: null, end: null, maxEl: -90, track: [] };
+      if (!cur) cur = { start: null, end: null, maxEl: -90, track: [], eye: false };
       cur.track.push({ az: l.az, el: l.el, t: tm });
+      if (!cur.eye && l.el >= EYE_SAT_MIN && l.eci) {
+        const d = new Date(tm);
+        if (lightState(sunAt(d), l.eci, l.el) === 'eye') cur.eye = true;
+      }
       if (l.el >= state.minEl) { if (!cur.start) cur.start = tm; cur.end = tm; }
       if (l.el > cur.maxEl) cur.maxEl = l.el;
     } else if (cur) {
@@ -589,6 +623,7 @@ function drawSky() {
     const good = s.el >= state.minEl;
     sctx.fillStyle = s.color; sctx.globalAlpha = good ? 1 : 0.45;
     sctx.beginPath(); sctx.arc(x, y, good ? 3.2 : 2, 0, Math.PI * 2); sctx.fill();
+    if (s.light === 'eye') { sctx.globalAlpha = 1; sctx.strokeStyle = '#9be7ff'; sctx.lineWidth = 1; sctx.beginPath(); sctx.arc(x, y, 5, 0, Math.PI * 2); sctx.stroke(); }
   }
   sctx.globalAlpha = 1;
   candidates.forEach(({ s }, idx) => {
@@ -631,8 +666,14 @@ function renderTable() {
   $('stGoodL').textContent = t('stat.good', { minEl: state.minEl });
   $('stStarlink').textContent = good.filter(s => s.isStarlink).length;
   $('stHorizon').textContent = vis.length;
+  const eyeB = (s) => s.light === 'eye' ? `<span class="eye">${esc(t('vis.badge'))}</span>` : '';
+  $('sunInfo').textContent = t('vis.sun', { el: nf(0).format(sunEl) });
+  $('eyeTip').hidden = !state.eyeOnly;
   let rows;
-  if (f) {
+  if (state.eyeOnly && !f) {
+    rows = vis.filter(s => s.light === 'eye');
+    $('visHint').textContent = rows.length ? t('sky.dimHint') : t('vis.none');
+  } else if (f) {
     rows = sats.filter(s => s.name.toLowerCase().includes(f) || String(s.id) === f)
       .sort((a, b) => (b.ok ? b.el : -999) - (a.ok ? a.el : -999)).slice(0, 200);
     $('visHint').textContent = t('sky.searchAll', { n: nf(0).format(sats.length) });
@@ -643,7 +684,7 @@ function renderTable() {
   $('visTable').tBodies[0].innerHTML = rows.map(s => {
     const up = s.ok && s.el >= 0;
     return `<tr data-id="${s.id}" class="${s === state.selected ? 'sel' : ''} ${!up || s.el < state.minEl ? 'low' : ''}">` +
-      `<td><span class="dot" style="background:${s.color}"></span>${esc(s.name)}</td>` +
+      `<td><span class="dot" style="background:${s.color}"></span>${esc(s.name)}${eyeB(s)}</td>` +
       (up ? `<td>${nf(1).format(s.el)}°</td><td>${Math.round(s.az)}° ${compass(s.az)}</td><td>${fmtKm(s.range)}</td>`
           : `<td colspan="3" class="muted">${esc(t('sky.below'))}</td>`) + '</tr>';
   }).join('');
@@ -678,7 +719,12 @@ function renderSelected() {
     const yes = candidates.some(c => c.s === s);
     dishRow = `<dt>${esc(t('sel.dish'))}</dt><dd class="${yes ? 'yes' : ''}">${esc(t(yes ? 'sel.dishYes' : 'sel.dishNo'))}</dd>`;
   }
-  $('selInfo').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('') + dishRow;
+  let eyeRow = '';
+  if (s.ok && s.el >= 0 && s.light) {
+    const key = { eye: 'vis.yes', day: 'vis.sunlit', low: 'vis.low', shadow: 'vis.shadow' }[s.light];
+    eyeRow = `<dt>${esc(t('vis.row'))}</dt><dd class="${s.light === 'eye' ? 'eyeyes' : ''}">${esc(t(key))}</dd>`;
+  }
+  $('selInfo').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('') + eyeRow + dishRow;
 
   $('selPassesT').textContent = t('sel.passes', { minEl: state.minEl });
   const now = simNow().getTime();
@@ -686,7 +732,8 @@ function renderSelected() {
   $('selPasses').innerHTML = upcoming.length ? upcoming.map(p => {
     const live = p.start <= now ? ` <b style="color:#7ee081">${esc(t('sel.now'))}</b>` : '';
     const dur = Math.max(1, Math.round((p.end - p.start) / 60e3));
-    return `<li><span>${dayTag(p.start)}${fmtTime(new Date(p.start))}–${fmtTime(new Date(p.end))}${live}</span>` +
+    const eye = p.eye ? `<span class="eye">${esc(t('vis.passEye'))}</span>` : '';
+    return `<li><span>${dayTag(p.start)}${fmtTime(new Date(p.start))}–${fmtTime(new Date(p.end))}${live}${eye}</span>` +
       `<span class="tag">${esc(t('sel.max', { el: Math.round(p.maxEl), min: dur }))}</span></li>`;
   }).join('') : `<li class="muted">${esc(t('sel.noPass'))}</li>`;
 
@@ -756,7 +803,7 @@ function updateCoverage() {
 function setObserver(lat, lon, kind, pan = true, name = null) {
   state.obs = { lat: round2(+lat), lon: round2(normLon(+lon)), kind, name };
   obsMarker.setLatLng([state.obs.lat, state.obs.lon]);
-  if (pan) map.panTo([state.obs.lat, state.obs.lon]);
+  if (pan) { map.panTo([state.obs.lat, state.obs.lon]); if (state.view === 'globe') globe?.flyTo(state.obs.lat, state.obs.lon); }
   updateCoverage(); renderNearGateways(); renderLocation(); persist();
   passesFor = null; tick(true);
 }
@@ -774,6 +821,64 @@ function showTab(name) {
   persist();
 }
 
+function orbitEcf(s, date) {
+  const period = (2 * Math.PI / s.satrec.no) * 60e3, out = [];
+  for (let dt = -0.35 * period; dt <= period; dt += 45e3) {
+    const d = new Date(date.getTime() + dt);
+    const pv = S.propagate(s.satrec, d);
+    if (pv && pv.position) out.push(S.eciToEcf(pv.position, S.gstime(d)));
+  }
+  return out;
+}
+let orbitCache = { id: null, at: 0, pts: [] };
+function updateGlobe(date) {
+  if (!globe || state.view !== 'globe') return;
+  const T = state.toggles, sel = state.selected;
+  const above = sats.filter(s => s.ok && s.el >= state.minEl);
+  const linkSats = (T.links ? above.filter(s => s.isStarlink) : []);
+  if (sel && sel.isStarlink && sel.ok && !linkSats.includes(sel)) linkSats.push(sel);
+  if (state.dish.on && candidates[0] && !linkSats.includes(candidates[0].s)) linkSats.push(candidates[0].s);
+  const gws = allGateways().filter(g => g.status !== 'planned' || T.gwPlanned);
+  const links = [];
+  for (const s of linkSats) for (const g of gws) {
+    if (satSeesPoint(s, g.lat, g.lon, GW_MIN_EL)) links.push([s, g, s === sel || (candidates[0] && s === candidates[0].s)]);
+  }
+  if (sel && sel.ok && (orbitCache.id !== sel.id || Date.now() - orbitCache.at > 20000 || state.speed > 1)) {
+    orbitCache = { id: sel.id, at: Date.now(), pts: orbitEcf(sel, date) };
+  }
+  globe.update({
+    date, sats, selected: sel, candidates, obs: state.obs, minEl: state.minEl, showDim: T.dim,
+    rays: T.rays ? above.filter(s => s.ecf) : (sel && sel.el >= state.minEl ? [sel] : []),
+    links: links.filter(([s]) => s.ecf), orbit: sel && sel.ok ? orbitCache.pts : null,
+  });
+}
+
+async function showView(view) {
+  state.view = view;
+  document.querySelectorAll('#viewSwitch button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  $('globe').hidden = view !== 'globe';
+  if (view === 'globe' && !globe && !globeLoading) {
+    globeLoading = true;
+    $('loading').hidden = false; $('loading').textContent = t('globe.loading');
+    try {
+      globe = await initGlobe($('globe'), { onPick: (s) => selectSat(s, true) });
+      globe.setGateways(allGateways());
+      globe.flyTo(state.obs.lat, state.obs.lon);
+    } catch (e) {
+      console.warn(e);
+      $('loading').textContent = t('globe.error', { msg: e.message || e });
+      globeLoading = false;
+      setTimeout(() => { $('loading').hidden = true; }, 4000);
+      return showView('map');
+    }
+    globeLoading = false;
+    $('loading').hidden = true;
+  }
+  if (view === 'map') { map.invalidateSize(); resizeCanvas(); }
+  else globe?.resize();
+  tick(true);
+}
+
 let lastUi = 0;
 function tick(force = false) {
   const date = simNow();
@@ -784,7 +889,8 @@ function tick(force = false) {
     passes = computePasses(s, date); passesFor = s.id;
   }
   if (s && s.ok) selCircle.setLatLng([s.lat, s.lon]).setRadius(coverageRadius(s.alt, state.minEl) * 1000);
-  draw(); drawSky();
+  if (state.view === 'map') draw(); else updateGlobe(date);
+  drawSky();
   renderDish(date);
   if (force || Date.now() - lastUi > 900) {
     lastUi = Date.now();
@@ -915,7 +1021,7 @@ function initUI() {
   $('dishAz').value = d.az ?? ''; $('dishEl').value = d.el ?? ''; $('dishFov').value = d.fov ?? 100;
   const dp = dishParams(); $('dishAz').placeholder = dp.az; $('dishEl').placeholder = dp.el;
   const onDish = () => {
-    const num = (id, lo, hi) => { const v = parseFloat($(id).value); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null; };
+    const num = (id, lo, hi) => { const v = parseFloat($(id).value.replace(',', '.')); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null; };
     state.dish = { on: $('dishOn').checked, az: num('dishAz', 0, 360), el: num('dishEl', 0, 90), fov: num('dishFov', 20, 160) || 100 };
     persist(); renderLocation(); tick(true);
   };
@@ -933,6 +1039,8 @@ function initUI() {
   });
 
   $('filter').addEventListener('input', e => { state.filter = e.target.value; renderTable(); });
+  $('eyeOnly').checked = state.eyeOnly;
+  $('eyeOnly').addEventListener('change', e => { state.eyeOnly = e.target.checked; persist(); renderTable(); });
   $('visTable').addEventListener('click', e => {
     const tr = e.target.closest('tr[data-id]'); if (!tr) return;
     const s = sats.find(x => x.id === +tr.dataset.id);
@@ -951,6 +1059,7 @@ function initUI() {
     $('loading').hidden = false; $('loading').textContent = t('loading');
     await loadGroups(true); $('loading').hidden = true;
   };
+  $('viewSwitch').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b && b.dataset.view !== state.view) showView(b.dataset.view); });
   document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 }
 

@@ -90,11 +90,15 @@ Cesta v aplikaci: Starlink → (profil/nastavení) → **Ladicí data** (Debug d
 - [x] Můj Starlink: zorné pole, kandidáti, odpočet 15 s.
 - [x] GitHub Pages.
 
-### Fáze 2 – rozpracováno
-- [ ] Návod přímo u polí antény (přesné názvy z aplikace Starlink, viz tabulka výše).
-- [ ] Viditelnost pouhým okem: satelit osvětlený Sluncem (`shadowFraction` < 0,5), pozorovatel ve tmě (Slunce pod −6°), satelit nad 10°. Ikona v seznamu, filtr „jen viditelné okem“, informace v detailu a u přeletů.
-- [ ] 3D glóbus: CesiumJS 1.146.0 z jsDelivr, načítat až po otevření pohledu „3D“. Podklad Esri (bez Cesium ion, bez tokenu). Satelity jako `PointPrimitiveCollection` ve skutečné výšce, pozorovatel, brány, dráha vybraného satelitu, spoje k branám, osvětlení Sluncem.
-- [ ] Test desktop + mobil, nasazení, ověření na veřejné adrese.
+### Fáze 2 – hotovo (26. 11. 2026)
+- [x] Návod přímo u polí antény podle skutečných názvů v aplikaci Starlink (CZ ověřeno ze snímku; ostatní jazyky ukazují anglické názvy). Varování, ať se nepoužívá „Cílový azimut/výška“. Pole přijímají desetinnou čárku i tečku.
+- [x] Viditelnost pouhým okem (`sunAt`, `lightState` v `app.js`): stav `eye` / `day` / `low` / `shadow` pro satelity nad obzorem, odznak „okem“ v seznamu, filtr „Jen viditelné pouhým okem“, výška Slunce u pozorovatele, řádek v detailu, značka u přeletů. Poznámka o slabé jasnosti Starlinků (5.–7. mag) – skutečnou jasnost zatím nepočítáme.
+- [x] 3D glóbus (`globe.js`): CesiumJS 1.146.0 z jsDelivr, načítá se až po přepnutí na „3D glóbus“. Podklad Esri přes `UrlTemplateImageryProvider` (bez ion tokenu). Satelity ve skutečné výšce (ECF z `propagateAll`, počítá se jen když glóbus existuje), den/noc podle simulovaného času, pozorovatel, paprsky, spoje k branám, dráha vybraného satelitu. Klik vybere nejbližší satelit do 12 px. Pro ladění je viewer na `document.getElementById('globe').cesiumViewer`.
+- [x] Mobil: mapa nahoře (`order: -1`), zkrácené hodiny.
+
+### Možná vylepšení fáze 2
+- Odhad jasnosti (magnitudy) podle vzdálenosti a fázového úhlu, ať „okem“ nehlásí satelity, které jsou ve skutečnosti moc slabé.
+- V glóbu zobrazit zorné pole antény jako kužel.
 
 ### Fáze 3 – 3D okolí pozorovatele (nápad od Martina, proveditelné)
 Cíl: po zadání polohy zobrazit okolí ve 3D a ukázat, jestli terén nebo budovy nestíní ve směru antény.

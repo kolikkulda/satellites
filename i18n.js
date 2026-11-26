@@ -445,6 +445,129 @@ const fr = {
   'base.dark': 'Carte sombre', 'base.sat': 'Images satellite',
 };
 
+// ---- Fáze 2: návod k anténě, viditelnost okem, 3D glóbus ----
+// Klíče končící na „Html“ smí obsahovat <b> (jen naše vlastní texty, nikdy vstup uživatele).
+const EN_APP = 'In the Starlink app: <b>Debug data → Alignment → ';
+Object.assign(cs, {
+  'vis.faint': 'Pozor: Starlinky na provozní dráze jsou slabé (zhruba 5.–7. hvězdná velikost), ve městě je často neuvidíš. Nejjasnější jsou čerstvě vypuštěné „vláčky“ a ISS.',
+  'dish.azWhereHtml': 'V aplikaci Starlink: <b>Ladicí data → Zarovnání → Odhad zorného úhlu</b> (např. 23,8°).',
+  'dish.elWhereHtml': 'V aplikaci Starlink: <b>Ladicí data → Zarovnání → Výška zorného úhlu</b> (např. 67,3°).',
+  'dish.fovWhereHtml': 'Aplikace ho neukazuje. Když nevíš, nech <b>100°</b>. Menší číslo výběr satelitů zúží.',
+  'dish.notDesiredHtml': 'Nepoužívej <b>Cílový azimut</b> ani <b>Cílovou výšku</b>. To je jen směr, kam se anténa snaží natočit, ne kam opravdu míří.',
+  'dish.how1Html': 'Připoj telefon k Wi‑Fi své antény a otevři aplikaci Starlink.',
+  'dish.how2Html': 'Otevři <b>Ladicí data</b> (v nastavení aplikace, obvykle v části Pokročilé).',
+  'dish.how3Html': 'Sjeď k sekci <b>Zarovnání</b> a opiš <b>Odhad zorného úhlu</b> a <b>Výšku zorného úhlu</b> do polí výše. Sekce <b>Překážky</b> ukazuje, jak velkou část oblohy ti něco stíní.',
+  'dish.how4Html': 'Nahoře nastav svou polohu, nejlépe tlačítkem <b>Moje poloha</b>.',
+  'vis.filter': 'Jen viditelné pouhým okem', 'vis.row': 'Pouhým okem', 'vis.yes': 'teď viditelný pouhým okem',
+  'vis.sunlit': 'na slunci, ale u tebe je světlo', 'vis.shadow': 've stínu Země, okem ho neuvidíš', 'vis.low': 'na slunci, ale nízko nad obzorem',
+  'vis.badge': 'okem', 'vis.sun': 'Slunce u tebe: {el}°',
+  'vis.tip': 'Satelit uvidíš pouhým okem, když je u tebe tma (Slunce aspoň 6° pod obzorem), satelit je ještě na slunci a je výš než 10°. Nejlépe to vychází 1–2 hodiny po západu nebo před východem Slunce.',
+  'vis.none': 'Teď není vidět pouhým okem žádný satelit.', 'vis.passEye': 'okem',
+  'view.map': 'Mapa', 'view.globe': '3D glóbus', 'globe.loading': 'Načítám 3D glóbus…', 'globe.error': '3D glóbus se nepodařilo načíst: {msg}',
+});
+Object.assign(en, {
+  'vis.faint': 'Note: Starlinks in their final orbit are faint (about magnitude 5–7) and often invisible from cities. Freshly launched “trains” and the ISS are the brightest.',
+  'dish.azWhereHtml': EN_APP + 'Estimated boresight azimuth</b> (e.g. 23.8°). The labels follow your app language.',
+  'dish.elWhereHtml': EN_APP + 'Estimated boresight elevation</b> (e.g. 67.3°).',
+  'dish.fovWhereHtml': 'The app does not show it. If unsure, keep <b>100°</b>. A smaller value narrows the candidates.',
+  'dish.notDesiredHtml': 'Do not use <b>Desired azimuth</b> or <b>Desired elevation</b>. That is where the dish is trying to turn, not where it actually points.',
+  'dish.how1Html': 'Connect your phone to the dish Wi‑Fi and open the Starlink app.',
+  'dish.how2Html': 'Open <b>Debug data</b> (in the app settings, usually under Advanced).',
+  'dish.how3Html': 'Scroll to <b>Alignment</b> and copy the <b>estimated boresight azimuth</b> and <b>elevation</b> into the fields above. The <b>Obstructions</b> section shows how much of your sky is blocked.',
+  'dish.how4Html': 'Set your location at the top, ideally with <b>My location</b>.',
+  'vis.filter': 'Only visible to the naked eye', 'vis.row': 'Naked eye', 'vis.yes': 'visible to the naked eye now',
+  'vis.sunlit': 'sunlit, but it is daylight where you are', 'vis.shadow': 'in Earth’s shadow, not visible', 'vis.low': 'sunlit, but low above the horizon',
+  'vis.badge': 'eye', 'vis.sun': 'Sun at your place: {el}°',
+  'vis.tip': 'You can see a satellite with the naked eye when it is dark where you are (Sun at least 6° below the horizon), the satellite is still in sunlight and higher than 10°. Best 1–2 hours after sunset or before sunrise.',
+  'vis.none': 'No satellite is visible to the naked eye right now.', 'vis.passEye': 'eye',
+  'view.map': 'Map', 'view.globe': '3D globe', 'globe.loading': 'Loading 3D globe…', 'globe.error': 'Could not load the 3D globe: {msg}',
+});
+Object.assign(de, {
+  'vis.faint': 'Hinweis: Starlinks in ihrer endgültigen Bahn sind lichtschwach (etwa 5.–7. Größenklasse) und in Städten oft unsichtbar. Am hellsten sind frisch gestartete „Ketten“ und die ISS.',
+  'dish.azWhereHtml': 'In der Starlink-App: <b>Debug-Daten → Ausrichtung → geschätzter Boresight-Azimut</b> (z. B. 23,8°). Die Bezeichnungen folgen der Sprache deiner App.',
+  'dish.elWhereHtml': 'In der Starlink-App: <b>Debug-Daten → Ausrichtung → geschätzte Boresight-Elevation</b> (z. B. 67,3°).',
+  'dish.fovWhereHtml': 'Die App zeigt es nicht. Im Zweifel <b>100°</b> lassen. Ein kleinerer Wert grenzt die Kandidaten ein.',
+  'dish.notDesiredHtml': 'Nicht den <b>Soll-Azimut</b> bzw. die <b>Soll-Elevation</b> verwenden. Dorthin will sich die Antenne drehen, nicht dorthin zeigt sie wirklich.',
+  'dish.how1Html': 'Verbinde dein Telefon mit dem WLAN der Antenne und öffne die Starlink-App.',
+  'dish.how2Html': 'Öffne die <b>Debug-Daten</b> (in den Einstellungen der App, meist unter „Erweitert“).',
+  'dish.how3Html': 'Scrolle zu <b>Ausrichtung</b> (Alignment) und übertrage den geschätzten Azimut und die Elevation in die Felder oben. Der Abschnitt <b>Hindernisse</b> zeigt, wie viel Himmel verdeckt ist.',
+  'dish.how4Html': 'Stelle oben deinen Standort ein, am besten mit <b>Mein Standort</b>.',
+  'vis.filter': 'Nur mit bloßem Auge sichtbare', 'vis.row': 'Bloßes Auge', 'vis.yes': 'jetzt mit bloßem Auge sichtbar',
+  'vis.sunlit': 'von der Sonne beleuchtet, aber bei dir ist es hell', 'vis.shadow': 'im Erdschatten, nicht sichtbar', 'vis.low': 'beleuchtet, aber tief am Horizont',
+  'vis.badge': 'Auge', 'vis.sun': 'Sonne bei dir: {el}°',
+  'vis.tip': 'Mit bloßem Auge siehst du einen Satelliten, wenn es bei dir dunkel ist (Sonne mindestens 6° unter dem Horizont), der Satellit noch in der Sonne steht und höher als 10° ist. Am besten 1–2 Stunden nach Sonnenuntergang oder vor Sonnenaufgang.',
+  'vis.none': 'Gerade ist kein Satellit mit bloßem Auge sichtbar.', 'vis.passEye': 'Auge',
+  'view.map': 'Karte', 'view.globe': '3D-Globus', 'globe.loading': '3D-Globus wird geladen…', 'globe.error': '3D-Globus konnte nicht geladen werden: {msg}',
+});
+Object.assign(sk, {
+  'vis.faint': 'Pozor: Starlinky na prevádzkovej dráhe sú slabé (zhruba 5.–7. hviezdna veľkosť), v meste ich často neuvidíš. Najjasnejšie sú čerstvo vypustené „vláčiky“ a ISS.',
+  'dish.azWhereHtml': 'V aplikácii Starlink: <b>Ladiace dáta → Zarovnanie → odhadovaný azimut (boresight azimuth)</b>, napr. 23,8°. V českej aplikácii „Odhad zorného úhlu“.',
+  'dish.elWhereHtml': 'V aplikácii Starlink: <b>Ladiace dáta → Zarovnanie → odhadovaná elevácia (boresight elevation)</b>, napr. 67,3°. V českej aplikácii „Výška zorného úhlu“.',
+  'dish.fovWhereHtml': 'Aplikácia ho neukazuje. Ak nevieš, nechaj <b>100°</b>. Menšie číslo výber satelitov zúži.',
+  'dish.notDesiredHtml': 'Nepoužívaj <b>cieľový azimut</b> ani <b>cieľovú výšku</b>. To je len smer, kam sa anténa snaží natočiť, nie kam naozaj mieri.',
+  'dish.how1Html': 'Pripoj telefón k Wi‑Fi svojej antény a otvor aplikáciu Starlink.',
+  'dish.how2Html': 'Otvor <b>Ladiace dáta</b> (Debug data) v nastaveniach aplikácie, zvyčajne v časti Rozšírené.',
+  'dish.how3Html': 'Choď do sekcie <b>Zarovnanie</b> (Alignment) a odpíš odhadovaný azimut a eleváciu do polí vyššie. Sekcia <b>Prekážky</b> ukazuje, akú časť oblohy ti niečo tieni.',
+  'dish.how4Html': 'Hore nastav svoju polohu, najlepšie tlačidlom <b>Moja poloha</b>.',
+  'vis.filter': 'Iba viditeľné voľným okom', 'vis.row': 'Voľným okom', 'vis.yes': 'teraz viditeľný voľným okom',
+  'vis.sunlit': 'na slnku, ale u teba je svetlo', 'vis.shadow': 'v tieni Zeme, okom ho neuvidíš', 'vis.low': 'na slnku, ale nízko nad obzorom',
+  'vis.badge': 'okom', 'vis.sun': 'Slnko u teba: {el}°',
+  'vis.tip': 'Satelit uvidíš voľným okom, keď je u teba tma (Slnko aspoň 6° pod obzorom), satelit je ešte na slnku a je vyššie ako 10°. Najlepšie 1–2 hodiny po západe alebo pred východom Slnka.',
+  'vis.none': 'Teraz nie je voľným okom viditeľný žiadny satelit.', 'vis.passEye': 'okom',
+  'view.map': 'Mapa', 'view.globe': '3D glóbus', 'globe.loading': 'Načítavam 3D glóbus…', 'globe.error': '3D glóbus sa nepodarilo načítať: {msg}',
+});
+Object.assign(pl, {
+  'vis.faint': 'Uwaga: Starlinki na docelowej orbicie są słabe (około 5–7 mag) i w mieście często niewidoczne. Najjaśniejsze są świeżo wystrzelone „pociągi” i ISS.',
+  'dish.azWhereHtml': 'W aplikacji Starlink: <b>Dane debugowania → Wyrównanie → szacowany azymut (boresight azimuth)</b>, np. 23,8°. Nazwy zależą od języka aplikacji.',
+  'dish.elWhereHtml': 'W aplikacji Starlink: <b>Dane debugowania → Wyrównanie → szacowana elewacja (boresight elevation)</b>, np. 67,3°.',
+  'dish.fovWhereHtml': 'Aplikacja go nie pokazuje. Jeśli nie wiesz, zostaw <b>100°</b>. Mniejsza wartość zawęża kandydatów.',
+  'dish.notDesiredHtml': 'Nie używaj <b>docelowego azymutu</b> ani <b>docelowej elewacji</b>. To kierunek, w który antena próbuje się obrócić, a nie ten, w który naprawdę celuje.',
+  'dish.how1Html': 'Połącz telefon z Wi‑Fi anteny i otwórz aplikację Starlink.',
+  'dish.how2Html': 'Otwórz <b>Dane debugowania</b> (Debug data) w ustawieniach aplikacji, zwykle w sekcji Zaawansowane.',
+  'dish.how3Html': 'Przewiń do sekcji <b>Wyrównanie</b> (Alignment) i przepisz szacowany azymut i elewację do pól powyżej. Sekcja <b>Przeszkody</b> pokazuje, jaka część nieba jest zasłonięta.',
+  'dish.how4Html': 'Ustaw u góry swoją lokalizację, najlepiej przyciskiem <b>Moja lokalizacja</b>.',
+  'vis.filter': 'Tylko widoczne gołym okiem', 'vis.row': 'Gołym okiem', 'vis.yes': 'teraz widoczny gołym okiem',
+  'vis.sunlit': 'w słońcu, ale u ciebie jest jasno', 'vis.shadow': 'w cieniu Ziemi, niewidoczny', 'vis.low': 'w słońcu, ale nisko nad horyzontem',
+  'vis.badge': 'oko', 'vis.sun': 'Słońce u ciebie: {el}°',
+  'vis.tip': 'Satelitę zobaczysz gołym okiem, gdy u ciebie jest ciemno (Słońce co najmniej 6° pod horyzontem), satelita jest jeszcze w słońcu i jest wyżej niż 10°. Najlepiej 1–2 godziny po zachodzie lub przed wschodem Słońca.',
+  'vis.none': 'Teraz żaden satelita nie jest widoczny gołym okiem.', 'vis.passEye': 'oko',
+  'view.map': 'Mapa', 'view.globe': 'Globus 3D', 'globe.loading': 'Wczytuję globus 3D…', 'globe.error': 'Nie udało się wczytać globusa 3D: {msg}',
+});
+Object.assign(es, {
+  'vis.faint': 'Nota: los Starlink en su órbita final son débiles (magnitud 5–7 aprox.) y desde la ciudad a menudo no se ven. Los más brillantes son los «trenes» recién lanzados y la ISS.',
+  'dish.azWhereHtml': 'En la app Starlink: <b>Datos de depuración → Alineación → acimut estimado (boresight azimuth)</b>, p. ej. 23,8°. Los nombres siguen el idioma de tu app.',
+  'dish.elWhereHtml': 'En la app Starlink: <b>Datos de depuración → Alineación → elevación estimada (boresight elevation)</b>, p. ej. 67,3°.',
+  'dish.fovWhereHtml': 'La app no lo muestra. Si dudas, deja <b>100°</b>. Un valor menor reduce los candidatos.',
+  'dish.notDesiredHtml': 'No uses el <b>acimut deseado</b> ni la <b>elevación deseada</b>. Es hacia donde intenta girar la antena, no hacia donde apunta de verdad.',
+  'dish.how1Html': 'Conecta el móvil al Wi‑Fi de la antena y abre la app de Starlink.',
+  'dish.how2Html': 'Abre los <b>Datos de depuración</b> (Debug data) en los ajustes de la app, normalmente en Avanzado.',
+  'dish.how3Html': 'Baja hasta <b>Alineación</b> (Alignment) y copia el acimut y la elevación estimados en los campos de arriba. La sección <b>Obstrucciones</b> muestra cuánto cielo está tapado.',
+  'dish.how4Html': 'Arriba, fija tu ubicación, mejor con <b>Mi ubicación</b>.',
+  'vis.filter': 'Solo visibles a simple vista', 'vis.row': 'A simple vista', 'vis.yes': 'visible a simple vista ahora',
+  'vis.sunlit': 'iluminado, pero donde estás es de día', 'vis.shadow': 'en la sombra de la Tierra, no visible', 'vis.low': 'iluminado, pero bajo sobre el horizonte',
+  'vis.badge': 'ojo', 'vis.sun': 'Sol en tu zona: {el}°',
+  'vis.tip': 'Verás un satélite a simple vista cuando sea de noche donde estás (Sol al menos 6° bajo el horizonte), el satélite siga iluminado por el Sol y esté a más de 10°. Lo mejor es 1–2 horas después de la puesta o antes de la salida del Sol.',
+  'vis.none': 'Ahora no hay ningún satélite visible a simple vista.', 'vis.passEye': 'ojo',
+  'view.map': 'Mapa', 'view.globe': 'Globo 3D', 'globe.loading': 'Cargando el globo 3D…', 'globe.error': 'No se pudo cargar el globo 3D: {msg}',
+});
+Object.assign(fr, {
+  'vis.faint': 'Attention : les Starlink sur leur orbite finale sont faibles (magnitude 5 à 7 environ) et souvent invisibles en ville. Les plus brillants sont les « trains » fraîchement lancés et l’ISS.',
+  'dish.azWhereHtml': 'Dans l’app Starlink : <b>Données de débogage → Alignement → azimut estimé (boresight azimuth)</b>, ex. 23,8°. Les libellés suivent la langue de votre app.',
+  'dish.elWhereHtml': 'Dans l’app Starlink : <b>Données de débogage → Alignement → élévation estimée (boresight elevation)</b>, ex. 67,3°.',
+  'dish.fovWhereHtml': 'L’app ne l’affiche pas. En cas de doute, gardez <b>100°</b>. Une valeur plus petite réduit les candidats.',
+  'dish.notDesiredHtml': 'N’utilisez pas l’<b>azimut souhaité</b> ni l’<b>élévation souhaitée</b>. C’est la direction visée par l’antenne, pas celle où elle pointe vraiment.',
+  'dish.how1Html': 'Connectez le téléphone au Wi‑Fi de l’antenne et ouvrez l’app Starlink.',
+  'dish.how2Html': 'Ouvrez les <b>Données de débogage</b> (Debug data) dans les réglages de l’app, souvent sous Avancé.',
+  'dish.how3Html': 'Descendez jusqu’à <b>Alignement</b> (Alignment) et recopiez l’azimut et l’élévation estimés dans les champs ci-dessus. La section <b>Obstructions</b> montre quelle part du ciel est masquée.',
+  'dish.how4Html': 'Réglez votre position en haut, idéalement avec <b>Ma position</b>.',
+  'vis.filter': 'Seulement visibles à l’œil nu', 'vis.row': 'À l’œil nu', 'vis.yes': 'visible à l’œil nu maintenant',
+  'vis.sunlit': 'éclairé, mais il fait jour chez vous', 'vis.shadow': 'dans l’ombre de la Terre, invisible', 'vis.low': 'éclairé, mais bas sur l’horizon',
+  'vis.badge': 'œil', 'vis.sun': 'Soleil chez vous : {el}°',
+  'vis.tip': 'Un satellite est visible à l’œil nu quand il fait nuit chez vous (Soleil au moins 6° sous l’horizon), que le satellite est encore au soleil et à plus de 10°. Idéal 1 à 2 heures après le coucher ou avant le lever du Soleil.',
+  'vis.none': 'Aucun satellite visible à l’œil nu pour l’instant.', 'vis.passEye': 'œil',
+  'view.map': 'Carte', 'view.globe': 'Globe 3D', 'globe.loading': 'Chargement du globe 3D…', 'globe.error': 'Impossible de charger le globe 3D : {msg}',
+});
+
 const DICTS = { cs, en, de, pl, sk, es, fr };
 let lang = 'en';
 
@@ -466,6 +589,7 @@ export function t(key, params) {
 // přeloží statické texty v HTML: data-i18n (text), data-i18n-ph (placeholder), data-i18n-title (title)
 export function applyStatic(root = document) {
   root.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  root.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); }); // jen naše texty s <b>
   root.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
   root.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
   document.title = t('app.title');
