@@ -97,8 +97,15 @@ Cesta v aplikaci: Starlink → (profil/nastavení) → **Ladicí data** (Debug d
 - [x] 3D glóbus (`globe.js`): CesiumJS 1.146.0 z jsDelivr, načítá se až po přepnutí na „3D glóbus“. Podklad Esri přes `UrlTemplateImageryProvider` (bez ion tokenu). Satelity ve skutečné výšce (ECF z `propagateAll`, počítá se jen když glóbus existuje), den/noc podle simulovaného času, pozorovatel, paprsky, spoje k branám, dráha vybraného satelitu. Klik vybere nejbližší satelit do 12 px. Pro ladění je viewer na `document.getElementById('globe').cesiumViewer`.
 - [x] Mobil: mapa nahoře (`order: -1`), zkrácené hodiny.
 
+### Odhad jasnosti – hotovo 26. 11. 2026
+- `stdMag`, `satMag` v `app.js`: m = standardní magnituda (1000 km, fáze 90°) + 5·log10(vzdálenost/1000) − 2,5·k·log10(F(φ)) + 0,2·(vzduchová hmota − 1). F je difuzní koule `(π−φ)cos φ + sin φ`. Pro ploché ztlumené satelity (Starlink, OneWeb) je fázový člen zmírněný na k = 0,5, protože koule u nich v protisvětle přeháněla.
+- Standardní magnitudy (přibližné průměry z fotometrie, Mallama aj.): ISS −1,8; Starlink v1.0 (COSPAR < 2020-038) 4,6; VisorSat a v1.5 (< 2023-026) 5,5; V2 Mini 6,2; čerstvě vypuštěný Starlink pod 420 km (posledních ~60 startů, `recentLaunchKey`) 4,0; OneWeb 7,1; ostatní 5,0 (označeno jako hrubý odhad). Dosluhující nízké Starlinky dostávají hodnotu podle generace, jasnější jsou jen díky menší vzdálenosti.
+- Nový stav `faint` (na slunci, tma, výš než 10°, ale slabší než limit). „Okem“ jen když mag ≤ `state.eyeLimit`, kterou uživatel volí v „Obloha u tebe“: město 4, předměstí 5 (výchozí), tmavý venkov 6. Ukládá se v `localStorage`.
+- Odznak „okem 3,4“ v seznamu i u přeletů (nejjasnější okamžik přeletu), filtr řadí od nejjasnějšího, v detailu řádek „Jasnost (odhad)“ s typem modelu.
+- Ověřeno 27. 11. 05:50 (Praha, Slunce −16°): 41 / 24 / 6 satelitů pro limit 6 / 5 / 4, nejjasnější čerstvě vypuštěný Starlink ~2,6 mag, běžné Starlinky 3–4,5 mag.
+- Možné zlepšení: kalibrovat standardní magnitudy podle novějších měření, odlišit V2 Mini „DTC“ (Direct to Cell), počítat se zhasnutím v soumraku (jas oblohy podle výšky Slunce).
+
 ### Možná vylepšení fáze 2
-- Odhad jasnosti (magnitudy) podle vzdálenosti a fázového úhlu, ať „okem“ nehlásí satelity, které jsou ve skutečnosti moc slabé.
 - V glóbu zobrazit zorné pole antény jako kužel.
 
 ### Fáze 3 – 3D okolí a maska obzoru (hotovo 26. 11. 2026)

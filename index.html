@@ -80,7 +80,16 @@
         <label class="switch small"><input type="checkbox" id="eyeOnly"><span data-i18n="vis.filter"></span></label>
         <span class="sun" id="sunInfo"></span>
       </div>
-      <div id="eyeTip" hidden><p class="hint" data-i18n="vis.tip"></p><p class="hint" data-i18n="vis.faint"></p></div>
+      <div id="eyeTip" hidden>
+        <label class="eyelimit"><span data-i18n="vis.sky"></span>
+          <select id="eyeLimit">
+            <option value="4" data-i18n="vis.sky4"></option>
+            <option value="5" data-i18n="vis.sky5"></option>
+            <option value="6" data-i18n="vis.sky6"></option>
+          </select>
+        </label>
+        <p class="hint" data-i18n="vis.tip"></p><p class="hint" data-i18n="vis.faint"></p>
+      </div>
       <input id="filter" type="search" data-i18n-ph="sky.searchPh">
       <div class="tablewrap">
         <table id="visTable">

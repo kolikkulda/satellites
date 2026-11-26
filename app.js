@@ -64,13 +64,13 @@ const state = {
   tab: saved.tab || 'sky',
   speed: 1, baseReal: Date.now(), baseSim: Date.now(),
   selected: null, picking: null, filter: '',
-  eyeOnly: !!saved.eyeOnly, view: 'map',
+  eyeOnly: !!saved.eyeOnly, eyeLimit: saved.eyeLimit ?? 5, view: 'map',
   obst: saved.obst || { use: true, antH: 3 }, consent3d: !!saved.consent3d,
 };
 setLang(detectLang(saved.lang));
 const persist = () => store.set({
   obs: state.obs.kind === 'region' ? null : state.obs, minEl: state.minEl, groups: state.groups, toggles: state.toggles,
-  customGws: state.customGws, base: state.base, dish: state.dish, tab: state.tab, lang: getLang(), eyeOnly: state.eyeOnly, obst: state.obst, consent3d: state.consent3d });
+  customGws: state.customGws, base: state.base, dish: state.dish, tab: state.tab, lang: getLang(), eyeOnly: state.eyeOnly, eyeLimit: state.eyeLimit, obst: state.obst, consent3d: state.consent3d });
 const simNow = () => new Date(state.baseSim + (Date.now() - state.baseReal) * state.speed);
 
 let sats = [];
@@ -242,6 +242,7 @@ function rebuildSats() {
     }
   }
   sats = [...byId.values()];
+  updateRecentLaunch();
   sats.forEach((s, i) => { s.i = i; });
   state.selected = prevSel ? byId.get(prevSel) || null : null;
   updateChipCounts();
@@ -373,12 +374,62 @@ function sunAt(date) {
   const la = S.ecfToLookAngles({ latitude: state.obs.lat * DEG, longitude: state.obs.lon * DEG, height: 0 }, S.eciToEcf(eciKm, S.gstime(date)));
   return { rsun: r, el: la.elevation / DEG };
 }
-// 'eye' = viditelný okem, 'day' = na slunci, ale u pozorovatele je den, 'low' = na slunci, ale nízko, 'shadow' = ve stínu Země
-function lightState(sun, eci, el) {
+// 'eye' = viditelný okem, 'faint' = podmínky jsou, ale satelit je nejspíš moc slabý,
+// 'day' = na slunci, ale u pozorovatele je den, 'low' = na slunci, ale nízko, 'shadow' = ve stínu Země
+function lightState(sun, eci, el, mag) {
   if (S.shadowFraction(sun.rsun, eci) >= 0.5) return 'shadow';
   if (sun.el > EYE_SUN_MAX) return 'day';
-  return el >= EYE_SAT_MIN ? 'eye' : 'low';
+  if (el < EYE_SAT_MIN) return 'low';
+  return mag != null && mag > state.eyeLimit ? 'faint' : 'eye';
 }
+
+// ---------- odhad jasnosti (hvězdné velikosti) ----------
+// Standardní magnituda = jasnost ve vzdálenosti 1000 km při fázovém úhlu 90° (polovina osvětlená).
+// Hodnoty jsou přibližné průměry z fotometrie (Mallama a další, 2020–2024); jednotlivé satelity
+// se liší o ±1 mag i víc a okamžité záblesky (odlesky panelů) model nezná.
+const EXTINCTION = 0.2; // mag na jednu vzduchovou hmotu nad zenitem
+// COSPAR „rok-číslo startu“ jako rok*1000+číslo; za čerstvé se bere posledních ~60 startů (asi 2 měsíce)
+let recentLaunchKey = Infinity;
+function updateRecentLaunch() {
+  let max = 0;
+  for (const s of sats) {
+    if (!s.isStarlink) continue;
+    const c = /^(\d{4})-(\d{3})/.exec(s.cospar || '');
+    if (c) max = Math.max(max, +c[1] * 1000 + +c[2]);
+  }
+  if (!max) { recentLaunchKey = Infinity; return; }
+  const y = Math.floor(max / 1000), n = max % 1000;
+  recentLaunchKey = n > 60 ? max - 60 : (y - 1) * 1000 + 250 + n; // přes přelom roku přibližně
+}
+function stdMag(s) {
+  // k = váha fázového členu; ploché ztlumené satelity (Starlink, OneWeb) se s fází mění méně než koule
+  if (s.id === 25544) return { m: -1.8, k: 1, model: 'iss' };
+  if (s.isStarlink) {
+    const c = /^(\d{4})-(\d{3})/.exec(s.cospar || '');
+    const key = c ? +c[1] * 1000 + +c[2] : 0;
+    // čerstvě vypuštěné, které ještě stoupají (letí natočené a bývají výrazně jasnější);
+    // dosluhující nízko letící satelity mají běžnou jasnost, jen jsou blíž
+    if (s.ok && s.alt < 420 && key >= recentLaunchKey) return { m: 4.0, k: 0.5, model: 'slLow' };
+    if (key && key < 2020038) return { m: 4.6, k: 0.5, model: 'slV1' };   // první generace bez clony
+    if (key && key < 2023026) return { m: 5.5, k: 0.5, model: 'slV15' };  // VisorSat a V1.5
+    return { m: 6.2, k: 0.5, model: 'slV2' };                             // V2 Mini se ztlumením
+  }
+  if (/^ONEWEB/i.test(s.name)) return { m: 7.1, k: 0.5, model: 'oneweb' };
+  return { m: 5.0, k: 1, model: 'generic' };
+}
+// Difuzní koule: F(φ) = ((π−φ)·cos φ + sin φ)/π, normováno na φ = 90°, fázový člen násoben k.
+function satMag(s, eci, sunR, gmst, obsEcf, el) {
+  const sat = S.eciToEcf(eci, gmst);
+  const sun = S.eciToEcf({ x: sunR.x * AU_KM, y: sunR.y * AU_KM, z: sunR.z * AU_KM }, gmst);
+  const ts = [sun.x - sat.x, sun.y - sat.y, sun.z - sat.z], to = [obsEcf.x - sat.x, obsEcf.y - sat.y, obsEcf.z - sat.z];
+  const ls = Math.hypot(...ts), lo = Math.hypot(...to);
+  const phase = Math.acos(Math.max(-1, Math.min(1, (ts[0] * to[0] + ts[1] * to[1] + ts[2] * to[2]) / (ls * lo))));
+  const f = Math.max(1e-4, (Math.PI - phase) * Math.cos(phase) + Math.sin(phase));
+  const airmass = 1 / Math.sin(Math.max(EYE_SAT_MIN, el) * DEG);
+  const sm = stdMag(s);
+  return sm.m + 5 * Math.log10(lo / 1000) - 2.5 * sm.k * Math.log10(f) + EXTINCTION * (airmass - 1);
+}
+const obsEcfNow = () => S.geodeticToEcf({ latitude: state.obs.lat * DEG, longitude: state.obs.lon * DEG, height: 0.3 });
 
 // ---------- výpočet poloh ----------
 function propagateAll(date) {
@@ -401,11 +452,13 @@ function propagateAll(date) {
   }
   const sun = sunAt(date);
   sunEl = sun.el; eyeCount = 0;
-  const m = activeMask();
+  const m = activeMask(), oEcf = obsEcfNow();
   for (const s of sats) {
+    s.mag = null;
     if (!s.ok || s.el < 0) { s.blocked = false; continue; }
     s.blocked = isBlocked(m, s.az, s.el);
-    s.light = lightState(sun, s.eci, s.el);
+    s.mag = satMag(s, s.eci, sun.rsun, gmst, oEcf, s.el);
+    s.light = lightState(sun, s.eci, s.el, s.mag);
     if (s.light === 'eye') eyeCount++;
   }
 }
@@ -413,20 +466,25 @@ function lookAt(s, date) {
   const pv = S.propagate(s.satrec, date);
   if (!pv || !pv.position) return null;
   const la = S.ecfToLookAngles({ latitude: state.obs.lat * DEG, longitude: state.obs.lon * DEG, height: 0.3 }, S.eciToEcf(pv.position, S.gstime(date)));
-  return { el: la.elevation / DEG, az: la.azimuth / DEG, eci: pv.position };
+  return { el: la.elevation / DEG, az: la.azimuth / DEG, eci: pv.position, range: la.rangeSat };
 }
 function computePasses(s, from) {
   const out = [], step = 20e3, end = from.getTime() + 24 * 3600e3;
   let cur = null;
+  const oEcf = obsEcfNow();
   for (let tm = from.getTime() - 15 * 60e3; tm < end && out.length < 6; tm += step) {
     const l = lookAt(s, new Date(tm));
     if (!l) break;
     if (l.el >= 0) {
-      if (!cur) cur = { start: null, end: null, maxEl: -90, track: [], eye: false };
+      if (!cur) cur = { start: null, end: null, maxEl: -90, track: [], eye: false, mag: null };
       cur.track.push({ az: l.az, el: l.el, t: tm });
-      if (!cur.eye && l.el >= EYE_SAT_MIN && l.eci) {
-        const d = new Date(tm);
-        if (lightState(sunAt(d), l.eci, l.el) === 'eye') cur.eye = true;
+      if (l.el >= EYE_SAT_MIN && l.eci) {
+        const d = new Date(tm), sun = sunAt(d);
+        if (sun.el <= EYE_SUN_MAX && S.shadowFraction(sun.rsun, l.eci) < 0.5) {
+          const mg = satMag(s, l.eci, sun.rsun, S.gstime(d), oEcf, l.el);
+          if (cur.mag == null || mg < cur.mag) cur.mag = mg;   // nejjasnější okamžik přeletu
+          if (mg <= state.eyeLimit) cur.eye = true;
+        }
       }
       if (l.el >= state.minEl) { if (!cur.start) cur.start = tm; cur.end = tm; }
       if (l.el > cur.maxEl) cur.maxEl = l.el;
@@ -731,13 +789,13 @@ function renderTable() {
   $('stGoodL').textContent = t('stat.good', { minEl: state.minEl });
   $('stStarlink').textContent = good.filter(s => s.isStarlink).length;
   $('stHorizon').textContent = vis.length;
-  const eyeB = (s) => (s.light === 'eye' && !s.blocked ? `<span class="eye">${esc(t('vis.badge'))}</span>` : '') +
+  const eyeB = (s) => (s.light === 'eye' && !s.blocked ? `<span class="eye" title="${esc(t('vis.magTitle', { m: nf(1).format(s.mag) }))}">${esc(t('vis.badge'))} ${nf(1).format(s.mag)}</span>` : '') +
     (s.blocked ? `<span class="blk">${esc(t('sky.blocked'))}</span>` : '');
   $('sunInfo').textContent = t('vis.sun', { el: nf(0).format(sunEl) });
   $('eyeTip').hidden = !state.eyeOnly;
   let rows;
   if (state.eyeOnly && !f) {
-    rows = vis.filter(s => s.light === 'eye');
+    rows = vis.filter(s => s.light === 'eye').sort((a, b) => a.mag - b.mag);
     $('visHint').textContent = rows.length ? t('sky.dimHint') : t('vis.none');
   } else if (f) {
     rows = sats.filter(s => s.name.toLowerCase().includes(f) || String(s.id) === f)
@@ -787,8 +845,11 @@ function renderSelected() {
   }
   let eyeRow = '';
   if (s.ok && s.el >= 0 && s.light) {
-    const key = { eye: 'vis.yes', day: 'vis.sunlit', low: 'vis.low', shadow: 'vis.shadow' }[s.light];
-    eyeRow = `<dt>${esc(t('vis.row'))}</dt><dd class="${s.light === 'eye' ? 'eyeyes' : ''}">${esc(t(key))}</dd>`;
+    const key = { eye: 'vis.yes', faint: 'vis.tooFaint', day: 'vis.sunlit', low: 'vis.low', shadow: 'vis.shadow' }[s.light];
+    eyeRow = `<dt>${esc(t('vis.row'))}</dt><dd class="${s.light === 'eye' ? 'eyeyes' : ''}">${esc(t(key, { lim: nf(1).format(state.eyeLimit) }))}</dd>`;
+    if (s.light !== 'shadow' && s.mag != null) {
+      eyeRow += `<dt>${esc(t('vis.mag'))}</dt><dd>${esc(t('vis.magVal', { m: nf(1).format(s.mag), model: t('vis.model.' + stdMag(s).model) }))}</dd>`;
+    }
   }
   let viewRow = '';
   if (activeMask() && s.ok && s.el >= 0) viewRow = `<dt>${esc(t('sel.view'))}</dt><dd>${esc(t(s.blocked ? 'sel.blockedYes' : 'sel.blockedNo'))}</dd>`;
@@ -800,7 +861,7 @@ function renderSelected() {
   $('selPasses').innerHTML = upcoming.length ? upcoming.map(p => {
     const live = p.start <= now ? ` <b style="color:#7ee081">${esc(t('sel.now'))}</b>` : '';
     const dur = Math.max(1, Math.round((p.end - p.start) / 60e3));
-    const eye = p.eye ? `<span class="eye">${esc(t('vis.passEye'))}</span>` : '';
+    const eye = p.eye ? `<span class="eye" title="${esc(t('vis.magTitle', { m: nf(1).format(p.mag) }))}">${esc(t('vis.passEye'))} ${nf(1).format(p.mag)}</span>` : '';
     return `<li><span>${dayTag(p.start)}${fmtTime(new Date(p.start))}–${fmtTime(new Date(p.end))}${live}${eye}</span>` +
       `<span class="tag">${esc(t('sel.max', { el: Math.round(p.maxEl), min: dur }))}</span></li>`;
   }).join('') : `<li class="muted">${esc(t('sel.noPass'))}</li>`;
@@ -1265,6 +1326,8 @@ function initUI() {
   $('filter').addEventListener('input', e => { state.filter = e.target.value; renderTable(); });
   $('eyeOnly').checked = state.eyeOnly;
   $('eyeOnly').addEventListener('change', e => { state.eyeOnly = e.target.checked; persist(); renderTable(); });
+  $('eyeLimit').value = String(state.eyeLimit);
+  $('eyeLimit').addEventListener('change', e => { state.eyeLimit = +e.target.value; persist(); passesFor = null; tick(true); });
   $('visTable').addEventListener('click', e => {
     const tr = e.target.closest('tr[data-id]'); if (!tr) return;
     const s = sats.find(x => x.id === +tr.dataset.id);

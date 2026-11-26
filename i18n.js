@@ -768,6 +768,66 @@ Object.assign(fr, {
   'serve.how': 'L’antenne ne parle qu’à un seul satellite à la fois. Le planificateur Starlink l’attribue pour 15 secondes, puis peut en attribuer un autre ou garder le même. Les autres candidats ci-dessous sont des satellites vers lesquels il peut vous basculer.',
 });
 
+// ---- Odhad jasnosti (hvězdné velikosti) ----
+Object.assign(cs, {
+  'vis.sky': 'Obloha u tebe', 'vis.sky4': 'město (vidíš hvězdy do 4 mag)', 'vis.sky5': 'předměstí (do 5 mag)', 'vis.sky6': 'tmavý venkov (do 6 mag)',
+  'vis.tooFaint': 'na slunci, ale nejspíš moc slabý (pro tvou oblohu do {lim} mag)',
+  'vis.mag': 'Jasnost (odhad)', 'vis.magVal': '{m} mag · {model}', 'vis.magTitle': 'odhad jasnosti {m} mag (menší číslo = jasnější)',
+  'vis.model.iss': 'ISS', 'vis.model.slLow': 'čerstvě vypuštěný Starlink, ještě stoupá (bývá jasnější)', 'vis.model.slV1': 'Starlink v1.0',
+  'vis.model.slV15': 'Starlink v1.5', 'vis.model.slV2': 'Starlink V2 Mini', 'vis.model.oneweb': 'OneWeb', 'vis.model.generic': 'obecný hrubý odhad',
+  'vis.tip': 'Satelit uvidíš pouhým okem, když je u tebe tma (Slunce aspoň 6° pod obzorem), satelit je ještě na slunci, je výš než 10° a je dost jasný na tvou oblohu. Jasnost počítáme ze vzdálenosti, úhlu osvětlení a typu satelitu; menší číslo znamená jasnější (Venuše −4, nejslabší hvězdy na tmavé obloze 6).',
+  'vis.faint': 'Jasnost je jen odhad: jednotlivé satelity se liší o celou hvězdnou velikost i víc a krátké záblesky od panelů nepředpovídáme. Starlinky na provozní dráze mají zhruba 5.–7. mag, ve městě je většinou neuvidíš.',
+});
+Object.assign(en, {
+  'vis.sky': 'Your sky', 'vis.sky4': 'city (stars to mag 4)', 'vis.sky5': 'suburbs (to mag 5)', 'vis.sky6': 'dark countryside (to mag 6)',
+  'vis.tooFaint': 'sunlit, but probably too faint (your sky shows down to mag {lim})',
+  'vis.mag': 'Brightness (estimate)', 'vis.magVal': 'mag {m} · {model}', 'vis.magTitle': 'estimated brightness mag {m} (lower = brighter)',
+  'vis.model.iss': 'ISS', 'vis.model.slLow': 'freshly launched Starlink, still raising its orbit (often brighter)', 'vis.model.slV1': 'Starlink v1.0',
+  'vis.model.slV15': 'Starlink v1.5', 'vis.model.slV2': 'Starlink V2 Mini', 'vis.model.oneweb': 'OneWeb', 'vis.model.generic': 'rough generic estimate',
+  'vis.tip': 'You can see a satellite with the naked eye when it is dark where you are (Sun at least 6° below the horizon), the satellite is still sunlit, higher than 10° and bright enough for your sky. Brightness is estimated from distance, lighting angle and satellite type; lower numbers are brighter (Venus −4, faintest stars in a dark sky 6).',
+  'vis.faint': 'Brightness is only an estimate: individual satellites differ by a magnitude or more, and short flares from panels are not predicted. Starlinks in their final orbit are about magnitude 5–7 and usually invisible from cities.',
+});
+Object.assign(de, {
+  'vis.sky': 'Dein Himmel', 'vis.sky4': 'Stadt (Sterne bis 4 mag)', 'vis.sky5': 'Vorort (bis 5 mag)', 'vis.sky6': 'dunkles Land (bis 6 mag)',
+  'vis.tooFaint': 'beleuchtet, aber wohl zu lichtschwach (dein Himmel zeigt bis {lim} mag)',
+  'vis.mag': 'Helligkeit (Schätzung)', 'vis.magVal': '{m} mag · {model}', 'vis.magTitle': 'geschätzte Helligkeit {m} mag (kleiner = heller)',
+  'vis.model.slLow': 'frisch gestarteter Starlink, steigt noch auf (oft heller)', 'vis.model.generic': 'grobe allgemeine Schätzung',
+  'vis.tip': 'Mit bloßem Auge siehst du einen Satelliten, wenn es bei dir dunkel ist (Sonne mindestens 6° unter dem Horizont), der Satellit noch in der Sonne steht, höher als 10° ist und hell genug für deinen Himmel. Die Helligkeit schätzen wir aus Entfernung, Beleuchtungswinkel und Satellitentyp; kleinere Zahl = heller (Venus −4, schwächste Sterne am dunklen Himmel 6).',
+  'vis.faint': 'Die Helligkeit ist nur geschätzt: einzelne Satelliten weichen um eine Größenklasse oder mehr ab, kurze Reflexe der Solarflächen sagen wir nicht voraus. Starlinks in der Endbahn haben etwa 5–7 mag und sind in Städten meist unsichtbar.',
+});
+Object.assign(sk, {
+  'vis.sky': 'Obloha u teba', 'vis.sky4': 'mesto (hviezdy do 4 mag)', 'vis.sky5': 'predmestie (do 5 mag)', 'vis.sky6': 'tmavý vidiek (do 6 mag)',
+  'vis.tooFaint': 'na slnku, ale asi príliš slabý (tvoja obloha ukáže do {lim} mag)',
+  'vis.mag': 'Jasnosť (odhad)', 'vis.magVal': '{m} mag · {model}', 'vis.magTitle': 'odhad jasnosti {m} mag (menšie číslo = jasnejší)',
+  'vis.model.slLow': 'čerstvo vypustený Starlink, ešte stúpa (býva jasnejší)', 'vis.model.generic': 'všeobecný hrubý odhad',
+  'vis.tip': 'Satelit uvidíš voľným okom, keď je u teba tma (Slnko aspoň 6° pod obzorom), satelit je ešte na slnku, je vyššie než 10° a je dosť jasný na tvoju oblohu. Jasnosť počítame zo vzdialenosti, uhla osvetlenia a typu satelitu; menšie číslo znamená jasnejší (Venuša −4, najslabšie hviezdy na tmavej oblohe 6).',
+  'vis.faint': 'Jasnosť je iba odhad: jednotlivé satelity sa líšia o celú hviezdnu veľkosť aj viac a krátke záblesky od panelov nepredpovedáme. Starlinky na prevádzkovej dráhe majú zhruba 5.–7. mag, v meste ich väčšinou neuvidíš.',
+});
+Object.assign(pl, {
+  'vis.sky': 'Twoje niebo', 'vis.sky4': 'miasto (gwiazdy do 4 mag)', 'vis.sky5': 'przedmieścia (do 5 mag)', 'vis.sky6': 'ciemna wieś (do 6 mag)',
+  'vis.tooFaint': 'oświetlony, ale chyba za słaby (twoje niebo pokazuje do {lim} mag)',
+  'vis.mag': 'Jasność (szacunek)', 'vis.magVal': '{m} mag · {model}', 'vis.magTitle': 'szacowana jasność {m} mag (mniej = jaśniej)',
+  'vis.model.slLow': 'świeżo wystrzelony Starlink, wciąż się wznosi (zwykle jaśniejszy)', 'vis.model.generic': 'ogólny przybliżony szacunek',
+  'vis.tip': 'Satelitę zobaczysz gołym okiem, gdy u ciebie jest ciemno (Słońce co najmniej 6° pod horyzontem), satelita jest jeszcze w słońcu, wyżej niż 10° i dość jasny jak na twoje niebo. Jasność szacujemy z odległości, kąta oświetlenia i typu satelity; mniejsza liczba = jaśniej (Wenus −4, najsłabsze gwiazdy na ciemnym niebie 6).',
+  'vis.faint': 'Jasność to tylko szacunek: poszczególne satelity różnią się o wielkość gwiazdową lub więcej, a krótkich błysków paneli nie przewidujemy. Starlinki na orbicie docelowej mają około 5–7 mag i z miasta zwykle ich nie widać.',
+});
+Object.assign(es, {
+  'vis.sky': 'Tu cielo', 'vis.sky4': 'ciudad (estrellas hasta mag 4)', 'vis.sky5': 'afueras (hasta mag 5)', 'vis.sky6': 'campo oscuro (hasta mag 6)',
+  'vis.tooFaint': 'iluminado, pero probablemente demasiado tenue (tu cielo muestra hasta mag {lim})',
+  'vis.mag': 'Brillo (estimación)', 'vis.magVal': 'mag {m} · {model}', 'vis.magTitle': 'brillo estimado mag {m} (menor = más brillante)',
+  'vis.model.slLow': 'Starlink recién lanzado, aún subiendo (suele ser más brillante)', 'vis.model.generic': 'estimación genérica aproximada',
+  'vis.tip': 'Verás un satélite a simple vista cuando sea de noche donde estás (Sol al menos 6° bajo el horizonte), el satélite siga iluminado, esté a más de 10° y sea lo bastante brillante para tu cielo. Estimamos el brillo con la distancia, el ángulo de iluminación y el tipo de satélite; un número menor es más brillante (Venus −4, estrellas más débiles en cielo oscuro 6).',
+  'vis.faint': 'El brillo es solo una estimación: cada satélite puede variar una magnitud o más, y no predecimos los destellos breves de los paneles. Los Starlink en su órbita final tienen magnitud 5–7 y casi nunca se ven desde la ciudad.',
+});
+Object.assign(fr, {
+  'vis.sky': 'Votre ciel', 'vis.sky4': 'ville (étoiles jusqu’à mag 4)', 'vis.sky5': 'banlieue (jusqu’à mag 5)', 'vis.sky6': 'campagne sombre (jusqu’à mag 6)',
+  'vis.tooFaint': 'éclairé, mais sans doute trop faible (votre ciel montre jusqu’à mag {lim})',
+  'vis.mag': 'Éclat (estimation)', 'vis.magVal': 'mag {m} · {model}', 'vis.magTitle': 'éclat estimé mag {m} (plus petit = plus brillant)',
+  'vis.model.slLow': 'Starlink tout juste lancé, encore en montée (souvent plus brillant)', 'vis.model.generic': 'estimation générique grossière',
+  'vis.tip': 'Vous voyez un satellite à l’œil nu quand il fait nuit chez vous (Soleil au moins 6° sous l’horizon), que le satellite est encore éclairé, à plus de 10° et assez brillant pour votre ciel. L’éclat est estimé d’après la distance, l’angle d’éclairage et le type de satellite ; plus le nombre est petit, plus c’est brillant (Vénus −4, étoiles les plus faibles sous un ciel noir 6).',
+  'vis.faint': 'L’éclat n’est qu’une estimation : chaque satellite peut s’écarter d’une magnitude ou plus, et les brefs reflets des panneaux ne sont pas prévus. Les Starlink sur orbite finale sont vers la magnitude 5–7 et rarement visibles en ville.',
+});
+
 const DICTS = { cs, en, de, pl, sk, es, fr };
 let lang = 'en';
 
