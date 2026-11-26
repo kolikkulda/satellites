@@ -100,14 +100,20 @@ Cesta v aplikaci: Starlink → (profil/nastavení) → **Ladicí data** (Debug d
 - Odhad jasnosti (magnitudy) podle vzdálenosti a fázového úhlu, ať „okem“ nehlásí satelity, které jsou ve skutečnosti moc slabé.
 - V glóbu zobrazit zorné pole antény jako kužel.
 
-### Fáze 3 – 3D okolí pozorovatele (nápad od Martina, proveditelné)
-Cíl: po zadání polohy zobrazit okolí ve 3D a ukázat, jestli terén nebo budovy nestíní ve směru antény.
-- Knihovna: MapLibre GL JS (bez klíče) nebo Cesium.
-- Terén: AWS Open Data „Terrain Tiles“ (Terrarium PNG, `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`) – ověřit CORS a licenci.
-- Budovy: OpenFreeMap (vektorové dlaždice s výškami budov, bez klíče) – ověřit podmínky.
-- Snímky: Esri World Imagery.
-- Výpočet **masky obzoru**: z výškového modelu spočítat pro každý azimut nejvyšší úhel terénu do ~20 km a vykreslit ho do oblohy (sky plotu); satelity za kopcem označit jako zakryté. Budovy a stromy v DEM nejsou – budovy lze doplnit z OSM, stromy ne.
-- Pozor na soukromí: dlaždice terénu se stahují podle polohy, takže poskytovatel dlaždic uvidí přibližnou oblast. Uživatele na to upozornit a načítat až po jeho kliknutí („Zobrazit 3D okolí“).
+### Fáze 3 – 3D okolí a maska obzoru (rozpracováno od 26. 11. 2026)
+Cíl: po zadání polohy ukázat okolí ve 3D a spočítat, kde terén a budovy zakrývají oblohu.
+
+**Ověřené zdroje (26. 11. 2026):**
+- Terén: AWS Open Data Terrain Tiles, `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`, kódování Terrarium (`výška = R*256 + G + B/256 − 32768`), CORS `*`. Atribuce: „Terrain Tiles – AWS Open Data / Mapzen“.
+- Budovy: OpenFreeMap `https://tiles.openfreemap.org/planet` (TileJSON, vektorové dlaždice OpenMapTiles do z14), vrstva `building` s poli `render_height`, `render_min_height`, `hide_3d`. CORS `*`. Atribuce: OpenFreeMap, OpenMapTiles, OpenStreetMap.
+- Knihovna: MapLibre GL JS 5.24.1 (BSD-3) z unpkg, načítat až po souhlasu.
+
+**Návrh:**
+- `horizon.js`: načte dlaždice terénu z12 v okruhu ~8 km, `elevAt(lat, lon)` s bilineární interpolací. `computeMask()` pro každý azimut 0–359° projde paprsek 30 m – 8 km a vezme max. elevační úhel terénu (korekce zakřivení Země s refrakcí, R_eff = 4/3 R). Budovy (z MapLibre `querySourceFeatures`, ~1 km kolem) se přidají přes zhuštěné hrany polygonů; budova, ve které stojí pozorovatel, se ignoruje (anténa bývá na její střeše).
+- `local3d.js`: MapLibre s podkladem Esri, terénem a vytaženými budovami, pohled natočený ve směru antény. Žlutá plocha = oblast, nad kterou anténa hledí (průmět kužele do výšky 60 m nad anténou), žluté čáry = směry ke kandidátům.
+- Souhlas: před prvním načtením panel v aplikaci (ne `confirm()`), který vysvětlí, že poskytovatelé dlaždic uvidí přibližnou oblast. Souhlas se pamatuje v `localStorage`.
+- Výsledek: maska v `localStorage` vázaná na polohu (zaokrouhlenou na 0,01°) a výšku antény. Maska na obloze jako šedá plocha, zakryté satelity duté a označené „zakrytý“, kandidáti antény vynechávají zakryté satelity. Odhad % zakryté oblohy v zorném poli antény pro srovnání s aplikací Starlink (Ladicí data → Překážky).
+- Omezení, která říct uživateli: stromy a drobné překážky v datech nejsou, výšky budov z OSM bývají odhadnuté, s polohou podle regionu to nedává smysl.
 
 ### Nápady na později
 - Domácí pomocník: malý program v domácí síti, který čte data přímo z antény (gRPC na 192.168.100.1:9200) – mapu překážek a směr antény – a určí obsluhující satelit přesněji. Web ho nemůže číst sám (blokuje to prohlížeč a je to tak správně).
