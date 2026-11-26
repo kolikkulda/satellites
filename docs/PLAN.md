@@ -13,7 +13,7 @@ Veřejná webová aplikace pro kohokoli na světě: satelity (hlavně Starlink) 
 
 ## Pevná pravidla
 
-1. **Soukromí:** poloha uživatele se nikdy neposílá žádné službě, nedává se do URL, neukládá se jinde než v `localStorage` jeho prohlížeče, a to zaokrouhleně na 0,01° (~1 km). Výchozí region se odhaduje z časové zóny (`tz-regions.js`), ne z IP adresy. Jediná výjimka je hledání místa: do OpenStreetMap Nominatim jde jen text, který uživatel napíše.
+1. **Soukromí:** poloha uživatele se nikdy neposílá žádné službě, nedává se do URL, neukládá se jinde než v `localStorage` jeho prohlížeče. (Původně se zaokrouhlovala na 0,01° ≈ 1 km; 26. 11. změněno na 5 desetinných míst, protože výpočet překážek potřebuje přesnou polohu a poloha prohlížeč stejně neopouští.) Výchozí region se odhaduje z časové zóny (`tz-regions.js`), ne z IP adresy. Jediná výjimka je hledání místa: do OpenStreetMap Nominatim (a u dotazů s číslem i do RÚIAN/ČÚZK) jde jen text, který uživatel napíše.
 2. **Žádný cizí kód s copyleft licencí.** KeepTrack (AGPL) a podobné projekty slouží jen jako inspirace nápadů. Náš kód je MIT.
 3. **Poctivost:** cokoli odhadovaného (obsluhující satelit, polohy bran) je v UI výslovně označené jako odhad.
 4. **Všechny texty UI jdou přes `i18n.js`** (7 jazyků: cs, en, de, pl, sk, es, fr). Chybějící klíč spadne na angličtinu. Nový text = přidat klíč minimálně do `cs` a `en`, ideálně do všech.
@@ -41,7 +41,8 @@ Veřejná webová aplikace pro kohokoli na světě: satelity (hlavně Starlink) 
   - **Musí se používat JSON (OMM), ne TLE:** nové Starlinky mají katalogová čísla nad 100 000, která se do formátu TLE nevejdou.
 - **Hugging Face datasets-server** – brány a PoP, `juliensimon/starlink-ground-stations` (hlavně USA) a `28hery/starlink-ground-stations` (celý svět). Živá aktualizace max. 1× denně, jinak snímek. CORS je povolený.
 - **Mapy:** Esri (tmavá a satelitní, bez klíče, s atribucí) a OpenStreetMap. CARTO už chce API klíč – nepoužívat.
-- **Nominatim** – hledání míst, s pauzou 500 ms mezi dotazy (pravidla použití: max. 1 dotaz za sekundu).
+- **Nominatim** – hledání míst, s pauzou 500 ms mezi dotazy (pravidla použití: max. 1 dotaz za sekundu). České adresy s číslem popisným ve městech s ulicemi nenajde (vrátí jen obec).
+- **RÚIAN (ČÚZK)** – `ags.cuzk.cz/…/GeocodeSOE/findAddressCandidates`, zná česká čísla popisná, CORS povolen pro naši doménu. Volá se jen pro dotazy s číslicí, výsledky (skóre ≥ 80) jsou v seznamu první se štítkem CZ.
 
 ### Jak sestavit `vendor/satellite.esm.js`
 

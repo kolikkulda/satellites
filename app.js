@@ -47,7 +47,8 @@ function regionFromTimezone() {
   if (!r) return { lat: 30, lon: 10, kind: 'world', cc: null };
   return { lat: r[0], lon: r[1], kind: 'region', cc: r[2] };
 }
-const round2 = (x) => Math.round(x * 100) / 100; // ~1 km – dost pro satelity, méně prozradí
+// poloha se drží s přesností ~1 m (5 desetinných míst); nikdy neopouští prohlížeč, přesnost je nutná pro výpočet překážek
+const round5 = (x) => Math.round(x * 1e5) / 1e5;
 
 // ---------- stav ----------
 const saved = store.get();
@@ -86,7 +87,7 @@ let globe = null, globeLoading = false;
 let local = null, localLoading = false, maskBusy = false;
 // maska obzoru: { lat, lon, antH, mask[360], ground, h0, buildings, at } – jen v tomto prohlížeči
 let maskData = (() => { try { return JSON.parse(localStorage.getItem('satview-mask') || 'null'); } catch { return null; } })();
-const maskMatches = () => maskData && Math.abs(maskData.lat - state.obs.lat) < 0.006 && Math.abs(maskData.lon - state.obs.lon) < 0.006
+const maskMatches = () => maskData && Math.abs(maskData.lat - state.obs.lat) < 0.0003 && Math.abs(maskData.lon - state.obs.lon) < 0.0003
   && maskData.antH === state.obst.antH;
 const activeMask = () => (state.obst.use && maskMatches() ? maskData.mask : null);
 const isBlocked = (m, az, el) => !!m && el <= m[Math.floor(((az % 360) + 360) % 360)];
@@ -106,8 +107,8 @@ function countryName(cc) {
 // ---------- mapa ----------
 const map = L.map('map', { worldCopyJump: true, minZoom: 2, zoomControl: true })
   .setView([state.obs.lat, state.obs.lon], state.obs.kind === 'world' ? 2 : 5);
-const esri = (name, maxZoom = 16) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${name}/MapServer/tile/{z}/{y}/{x}`, {
-  maxZoom, attribution: '&copy; Esri · <a href="https://celestrak.org">CelesTrak</a>' });
+const esri = (name, maxNativeZoom = 16) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${name}/MapServer/tile/{z}/{y}/{x}`, {
+  maxNativeZoom, maxZoom: 19, attribution: '&copy; Esri · <a href="https://celestrak.org">CelesTrak</a>' });
 const BASES = {
   dark: L.layerGroup([esri('Canvas/World_Dark_Gray_Base'), esri('Canvas/World_Dark_Gray_Reference')]),
   sat: L.layerGroup([esri('World_Imagery', 18), esri('Reference/World_Boundaries_and_Places')]),
@@ -713,7 +714,7 @@ function renderLocation() {
   const kind = { region: 'loc.region', precise: 'loc.precise', custom: 'loc.custom', world: 'loc.world' }[o.kind] || 'loc.custom';
   $('locKind').textContent = t(kind);
   $('locName').textContent = o.kind === 'region' ? countryName(o.cc) : o.kind === 'world' ? '—' :
-    (o.name ? o.name + ' · ' : '') + `${nf(2).format(o.lat)}°, ${nf(2).format(o.lon)}°`;
+    (o.name ? o.name + ' · ' : '') + `${nf(5).format(o.lat)}°, ${nf(5).format(o.lon)}°`;
   $('lat').value = o.kind === 'world' ? '' : o.lat; $('lon').value = o.kind === 'world' ? '' : o.lon;
   const region = o.kind === 'region' || o.kind === 'world';
   obsMarker.setIcon(L.divIcon({ className: '', html: `<div class="obs-icon${region ? ' region' : ''}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }));
@@ -884,7 +885,7 @@ function updateCoverage() {
 
 // ---------- akce ----------
 function setObserver(lat, lon, kind, pan = true, name = null) {
-  state.obs = { lat: round2(+lat), lon: round2(normLon(+lon)), kind, name };
+  state.obs = { lat: round5(+lat), lon: round5(normLon(+lon)), kind, name };
   obsMarker.setLatLng([state.obs.lat, state.obs.lon]);
   if (pan) { map.panTo([state.obs.lat, state.obs.lon]); if (state.view === 'globe') globe?.flyTo(state.obs.lat, state.obs.lon); }
   local?.setObserver(state.obs.lat, state.obs.lon);
@@ -1145,20 +1146,27 @@ function initUI() {
     const r = regionFromTimezone();
     state.obs = r; setObserver(r.lat, r.lon, r.kind); state.obs.cc = r.cc; renderLocation(); persist();
   };
-  const startPick = (what) => { state.picking = what; $('pickBanner').hidden = false; $('map').classList.add('picking');
-    $('pickWhat').textContent = t(what === 'gw' ? 'pick.gw' : 'pick.obs'); };
+  const startPick = (what) => { if (state.view !== 'map') showView('map'); state.picking = what; $('pickBanner').hidden = false; $('map').classList.add('picking');
+    $('pickWhat').textContent = t(what === 'gw' ? 'pick.gw' : 'pick.obs');
+    if ($('mapwrap').getBoundingClientRect().top < 0) $('mapwrap').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   const endPick = () => { state.picking = null; $('pickBanner').hidden = true; $('map').classList.remove('picking'); };
   $('btnPick').onclick = () => startPick('obs');
   $('btnAddGw').onclick = () => startPick('gw');
   $('pickCancel').onclick = endPick;
 
-  map.on('contextmenu', e => setObserver(e.latlng.lat, e.latlng.lng, 'custom', false));
+  map.on('contextmenu', e => { setObserver(e.latlng.lat, e.latlng.lng, 'custom', false); if (map.getZoom() < 15) map.setView(e.latlng, 18); });
   map.on('click', e => {
-    if (state.picking === 'obs') { endPick(); return setObserver(e.latlng.lat, e.latlng.lng, 'custom', false); }
+    if (state.picking === 'obs') {
+      endPick();
+      setObserver(e.latlng.lat, e.latlng.lng, 'custom', false);
+      // v malém přiblížení nejde dům trefit – přiblížit, ať jde značka dotáhnout přesně
+      if (map.getZoom() < 15) map.setView(e.latlng, 18);
+      return;
+    }
     if (state.picking === 'gw') {
       endPick();
       const name = prompt(t('gw.namePrompt'), t('gw.defaultName'));
-      if (name) { state.customGws.push({ name: name.slice(0, 60), lat: round2(e.latlng.lat), lon: round2(normLon(e.latlng.lng)) }); persist(); renderGatewayMarkers(); }
+      if (name) { state.customGws.push({ name: name.slice(0, 60), lat: round5(e.latlng.lat), lon: round5(normLon(e.latlng.lng)) }); persist(); renderGatewayMarkers(); }
       return;
     }
     const W = 256 * Math.pow(2, map.getZoom()), cp = e.containerPoint;
@@ -1183,17 +1191,25 @@ function initUI() {
     const q = e.target.value.trim();
     if (q.length < 3) { $('placeResults').hidden = true; return; }
     qTimer = setTimeout(async () => {
-      try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=${getLang()}&q=${encodeURIComponent(q)}`);
-        const res = await r.json();
-        $('placeResults').innerHTML = res.map(p => `<li data-lat="${+p.lat}" data-lon="${+p.lon}">${esc(p.display_name)}</li>`).join('') || `<li class="muted">${esc(t('loc.noResults'))}</li>`;
-        $('placeResults').hidden = false;
-      } catch { /* bez připojení */ }
+      // OpenStreetMap (celý svět) + u dotazu s číslem i český registr adres RÚIAN (ČÚZK), který zná čísla popisná
+      const osm = fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=${getLang()}&q=${encodeURIComponent(q)}`)
+        .then(r => r.json()).then(res => res.map(p => ({ lat: +p.lat, lon: +p.lon, label: p.display_name })))
+        .catch(() => []);
+      const ruian = /\d/.test(q)
+        ? fetch(`https://ags.cuzk.cz/arcgis/rest/services/RUIAN/Vyhledavaci_sluzba_nad_daty_RUIAN/MapServer/exts/GeocodeSOE/findAddressCandidates?SingleLine=${encodeURIComponent(q)}&outSR=4326&maxLocations=6&f=json`)
+          .then(r => r.json()).then(j => (j.candidates || []).filter(c => c.score >= 80)
+            .map(c => ({ lat: c.location.y, lon: c.location.x, label: c.address, tag: 'CZ' })))
+          .catch(() => [])
+        : Promise.resolve([]);
+      const list = [...await ruian, ...await osm].filter(x => isFinite(x.lat) && isFinite(x.lon)).slice(0, 10);
+      $('placeResults').innerHTML = list.map(p => `<li data-lat="${p.lat}" data-lon="${p.lon}">${p.tag ? '<span class="tag">' + p.tag + '</span> ' : ''}${esc(p.label)}</li>`).join('')
+        || `<li class="muted">${esc(t('loc.noResults'))}</li>`;
+      $('placeResults').hidden = false;
     }, 500);
   });
   $('placeResults').addEventListener('click', e => {
     const li = e.target.closest('li[data-lat]'); if (!li) return;
-    const name = li.textContent.split(',')[0];
+    const name = li.textContent.replace(/^CZ\s+/, '').split(',')[0];
     setObserver(li.dataset.lat, li.dataset.lon, 'custom', true, name);
     map.setZoom(Math.max(map.getZoom(), 6));
     $('placeResults').hidden = true; $('placeQuery').value = name;

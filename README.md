@@ -20,7 +20,7 @@ Languages: English, Čeština, Deutsch, Polski, Slovenčina, Español, Français
 
 ## Privacy
 
-No cookies, no analytics, no backend. The starting region is estimated from your browser's time zone without contacting any service. Your location, settings and custom gateways stay in your browser's local storage, rounded to about 1 km. Place search sends only the typed text to OpenStreetMap Nominatim.
+No cookies, no analytics, no backend. The starting region is estimated from your browser's time zone without contacting any service. Your location, settings and custom gateways stay in your browser's local storage and are never sent to the site. Place search sends only the typed text to OpenStreetMap Nominatim.
 
 ## Data sources
 
