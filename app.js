@@ -336,6 +336,15 @@ function satSeesPoint(s, lat, lon, minEl) {
 }
 
 // ---------- anténa ----------
+// Může satelit obsluhovat domácí anténu? Ne: Direct to Cell (jen pro mobily), satelity pod 400 km
+// (sestupují z provozu) a čerstvě vypuštěné, které ještě stoupají na provozní dráhu.
+const SERVE_MIN_ALT = 400, RAISING_ALT = 450;
+const launchKey = (s) => { const c = /^(\d{4})-(\d{3})/.exec(s.cospar || ''); return c ? +c[1] * 1000 + +c[2] : 0; };
+function canServe(s, alt) {
+  if (!s.isStarlink || /\[DTC\]/i.test(s.name)) return false;
+  if (alt < SERVE_MIN_ALT) return false;
+  return !(alt < RAISING_ALT && launchKey(s) >= recentLaunchKey);
+}
 function dishParams() {
   const d = state.dish;
   return { az: d.az ?? (state.obs.lat >= 0 ? 0 : 180), el: d.el ?? 65, fov: d.fov || 100 };
@@ -345,7 +354,7 @@ function computeCandidates(date) {
   const p = dishParams(), axis = enu(p.az, p.el);
   candidates = [];
   for (const s of sats) {
-    if (!s.ok || !s.isStarlink || s.el < state.minEl || s.blocked) continue;
+    if (!s.ok || !canServe(s, s.alt) || s.el < state.minEl || s.blocked) continue;
     const off = angBetween(axis, enu(s.az, s.el));
     if (off <= p.fov / 2) candidates.push({ s, off });
   }
@@ -360,6 +369,174 @@ function computeCandidates(date) {
     serving = next; servingSlot = slot;
   }
 }
+// ---------- deník výpadků (jen v tomto prohlížeči) ----------
+// Ke každému výpadku se v okamžiku zápisu spočítá odhad okolností a uloží se jako hotová čísla,
+// takže pozdější změna drah nebo polohy už záznam nezmění. Nic se nikam neposílá.
+const OUT_KEY = 'satview-outages', OUT_MAX = 1000, OUT_CAUSES = ['unknown', 'obstruction', 'nosat', 'network', 'other'];
+const num = (x, lo, hi) => (typeof x === 'number' && isFinite(x) && x >= lo && x <= hi ? x : null);
+const str = (x, max) => (typeof x === 'string' ? x.slice(0, max) : '');
+let outages = (() => { try { return sanitizeOutages(JSON.parse(localStorage.getItem(OUT_KEY) || '[]')); } catch { return []; } })();
+const saveOutages = () => { try { localStorage.setItem(OUT_KEY, JSON.stringify(outages)); } catch { /* soukromé okno */ } };
+// Import i načtení: z cizích dat se převezmou jen známá pole se správným typem a rozsahem.
+function sanitizeOutages(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const o of list.slice(0, OUT_MAX)) {
+    if (!o || typeof o !== 'object') continue;
+    const tm = num(o.t, 0, 4102444800000);
+    if (tm == null) continue;
+    const e = o.est && typeof o.est === 'object' ? o.est : null;
+    const est = e ? {
+      name: str(e.name, 40), id: num(e.id, 0, 1e7), model: str(e.model, 12),
+      az: num(e.az, 0, 360), el: num(e.el, -90, 90), off: num(e.off, 0, 180), range: num(e.range, 0, 1e5), alt: num(e.alt, 0, 1e5),
+      sunlit: typeof e.sunlit === 'boolean' ? e.sunlit : null, gws: Array.isArray(e.gws) ? e.gws.slice(0, 6).map(g => str(g, 60)) : [],
+      nCand: num(e.nCand, 0, 1e4), toHo: num(e.toHo, 0, 15), sinceHo: num(e.sinceHo, 0, 15), dataAgeH: num(e.dataAgeH, 0, 1e5),
+      sameAsSlot: typeof e.sameAsSlot === 'boolean' ? e.sameAsSlot : null,
+    } : null;
+    out.push({ id: str(o.id, 20) || Math.random().toString(36).slice(2, 10), t: tm, dur: num(o.dur, 0, 86400),
+      cause: OUT_CAUSES.includes(o.cause) ? o.cause : 'unknown', note: str(o.note, 200), est });
+  }
+  return out.sort((a, b) => b.t - a.t);
+}
+// Pozice všech Starlinků, které mohou obsluhovat anténu, v daném okamžiku (vlastní propagace, nemění živý stav).
+function servableAt(date) {
+  const gmst = S.gstime(date), o = state.obs, m = activeMask();
+  const obsGd = { latitude: o.lat * DEG, longitude: o.lon * DEG, height: 0.3 };
+  const p = dishParams(), axis = enu(p.az, p.el), out = [];
+  for (const s of sats) {
+    if (!s.isStarlink || /\[DTC\]/i.test(s.name)) continue;
+    const pv = S.propagate(s.satrec, date);
+    if (!pv || !pv.position || isNaN(pv.position.x)) continue;
+    const gd = S.eciToGeodetic(pv.position, gmst);
+    const lat = gd.latitude / DEG, lon = normLon(gd.longitude / DEG), alt = gd.height;
+    if (!canServe(s, alt)) continue;
+    if (centralAngle(o.lat, o.lon, lat, lon) > Math.acos(R_EARTH / (R_EARTH + alt))) continue;
+    const la = S.ecfToLookAngles(obsGd, S.eciToEcf(pv.position, gmst));
+    const el = la.elevation / DEG, az = la.azimuth / DEG;
+    if (el < state.minEl || isBlocked(m, az, el)) continue;
+    const off = angBetween(axis, enu(az, el));
+    if (off <= p.fov / 2) out.push({ s, az, el, off, range: la.rangeSat, alt, lat, lon, eci: pv.position });
+  }
+  return out.sort((a, b) => a.off - b.off);
+}
+function estimateOutage(date) {
+  if (!sats.length) return null;
+  const ms = date.getTime(), slotStart = (Math.floor((ms / 1000 - 12) / 15) * 15 + 12) * 1000;
+  const atSlot = servableAt(new Date(slotStart))[0] || null;
+  const now = servableAt(date);
+  // plánovač drží satelit celý úsek; jinak (zmizel ze zorného pole) nastupuje nejbližší ose
+  const pick = (atSlot && now.find(c => c.s === atSlot.s)) || now[0] || null;
+  const sun = sunAt(date);
+  const sinceHo = (ms - slotStart) / 1000;
+  const epochs = sats.filter(s => s.isStarlink).map(s => s.epoch.getTime());
+  const newest = epochs.length ? Math.max(...epochs) : ms;
+  const base = { nCand: now.length, toHo: 15 - sinceHo, sinceHo, dataAgeH: Math.abs(ms - newest) / 3600e3 };
+  if (!pick) return { ...base, name: '', id: null, model: '', az: null, el: null, off: null, range: null, alt: null, sunlit: null, gws: [], sameAsSlot: null };
+  const s = pick.s;
+  const gws = allGateways().filter(g => g.status !== 'planned')
+    .map(g => ({ n: g.name, e: elevFromCentral(centralAngle(pick.lat, pick.lon, g.lat, g.lon), pick.alt) }))
+    .filter(g => g.e >= GW_MIN_EL).sort((a, b) => b.e - a.e).slice(0, 6).map(g => g.n);
+  return { ...base, name: s.name, id: s.id, model: stdMag({ ...s, ok: true, alt: pick.alt }).model,
+    az: pick.az, el: pick.el, off: pick.off, range: pick.range, alt: pick.alt,
+    sunlit: S.shadowFraction(sun.rsun, pick.eci) < 0.5, gws, sameAsSlot: !!atSlot && atSlot.s === s };
+}
+const pct = (a, n) => (n ? Math.round(100 * a / n) : 0);
+function diarySummary() {
+  const n = outages.length;
+  if (n < 2) return n ? [t('diary.sumFew')] : [];
+  const lines = [];
+  const withEst = outages.filter(o => o.est);
+  const nearHo = withEst.filter(o => o.est.sinceHo <= 2 || o.est.toHo <= 2).length;
+  // náhodně by do okna ±2 s kolem přepnutí padlo 4/15 ≈ 27 % výpadků
+  lines.push(t('diary.sumHo', { p: pct(nearHo, withEst.length), n: withEst.length }));
+  const noSat = withEst.filter(o => !o.est.name).length;
+  if (noSat) lines.push(t('diary.sumNoSat', { n: noSat }));
+  const els = withEst.filter(o => o.est.el != null).map(o => o.est.el).sort((a, b) => a - b);
+  if (els.length) lines.push(t('diary.sumEl', { med: nf(0).format(els[Math.floor(els.length / 2)]), min: nf(0).format(els[0]) }));
+  const shadow = withEst.filter(o => o.est.sunlit === false).length;
+  if (withEst.length) lines.push(t('diary.sumShadow', { p: pct(shadow, withEst.length) }));
+  const cnt = (arr) => { const m = new Map(); arr.forEach(k => m.set(k, (m.get(k) || 0) + 1)); return [...m].sort((a, b) => b[1] - a[1]); };
+  const gw = cnt(withEst.map(o => o.est.gws[0] || t('diary.laser')));
+  if (gw.length) lines.push(t('diary.sumGw', { list: gw.slice(0, 3).map(([k, v]) => `${k} ${v}×`).join(', ') }));
+  const gen = cnt(withEst.filter(o => o.est.model).map(o => t('vis.model.' + o.est.model)));
+  if (gen.length) lines.push(t('diary.sumGen', { list: gen.slice(0, 3).map(([k, v]) => `${k} ${v}×`).join(', ') }));
+  const sat = cnt(withEst.filter(o => o.est.name).map(o => o.est.name)).filter(([, v]) => v > 1);
+  if (sat.length) lines.push(t('diary.sumSat', { list: sat.slice(0, 3).map(([k, v]) => `${k} ${v}×`).join(', ') }));
+  const hours = cnt(outages.map(o => new Date(o.t).getHours())).filter(([, v]) => v > 1);
+  if (hours.length) lines.push(t('diary.sumHour', { list: hours.slice(0, 3).map(([k, v]) => `${k}:00–${k}:59 ${v}×`).join(', ') }));
+  return lines;
+}
+function renderDiary() {
+  $('diaryN').textContent = outages.length;
+  $('diaryNeed').hidden = state.dish.on && state.obs.kind !== 'region';
+  $('diarySum').innerHTML = diarySummary().map(l => `<li>${esc(l)}</li>`).join('');
+  const fmt = (ms) => new Date(ms).toLocaleString(getLang(), { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  $('diaryList').innerHTML = outages.length ? outages.map(o => {
+    const e = o.est;
+    let info;
+    if (!e) info = esc(t('diary.noEst'));
+    else if (!e.name) info = esc(t('diary.noneInView'));
+    else info = `<b>${esc(e.name)}</b>` + (e.el != null && e.az != null && e.off != null && e.range != null
+      ? ` · ${esc(t('diary.estLine', { el: nf(0).format(e.el), az: Math.round(e.az), off: nf(0).format(e.off), km: nf(0).format(e.range) }))}` : '') +
+      `<br>${esc(e.gws.length ? t('serve.via', { gw: e.gws.slice(0, 3).join(', ') }) : t('serve.viaLaser'))}` +
+      (e.sinceHo != null && e.toHo != null ? `<br>${esc(t('diary.hoLine', { since: nf(0).format(e.sinceHo), to: nf(0).format(e.toHo), n: e.nCand ?? '?' }))}` : '') +
+      `${e.sunlit === false ? ' · ' + esc(t('diary.inShadow')) : ''}${e.dataAgeH > 72 ? ' · ' + esc(t('diary.oldData')) : ''}`;
+    return `<li class="outage"><div class="ohead"><span>${esc(fmt(o.t))}${o.dur != null ? ' · ' + esc(nf(0).format(o.dur)) + ' s' : ''}` +
+      ` · ${esc(t('diary.cause.' + o.cause))}</span><button type="button" class="del" data-odel="${esc(o.id)}" title="${esc(t('diary.del'))}">✕</button></div>` +
+      `<div class="obody">${info}${o.note ? `<br><i>${esc(o.note)}</i>` : ''}</div></li>`;
+  }).join('') : `<li class="muted">${esc(t('diary.empty'))}</li>`;
+}
+const pad2 = (x) => String(x).padStart(2, '0');
+const toLocalInput = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+function initDiary() {
+  $('oTime').value = toLocalInput(new Date());
+  $('oNow').addEventListener('click', () => { $('oTime').value = toLocalInput(new Date()); });
+  $('oAdd').addEventListener('click', () => {
+    const d = new Date($('oTime').value);
+    if (isNaN(d.getTime())) { $('oTime').focus(); return; }
+    const durRaw = $('oDur').value.trim().replace(',', '.');
+    const dur = durRaw === '' ? null : num(+durRaw, 0, 86400);
+    const est = state.dish.on && state.obs.kind !== 'region' ? estimateOutage(d) : null;
+    outages = sanitizeOutages([{ id: Math.random().toString(36).slice(2, 10), t: d.getTime(), dur, cause: $('oCause').value, note: $('oNote').value.trim(), est }, ...outages]);
+    saveOutages(); $('oNote').value = ''; renderDiary();
+  });
+  $('diaryList').addEventListener('click', e => {
+    const b = e.target.closest('[data-odel]'); if (!b) return;
+    outages = outages.filter(o => o.id !== b.dataset.odel); saveOutages(); renderDiary();
+  });
+  // smazání všeho na dvě kliknutí (bez systémového confirm)
+  let armed = null;
+  $('oClear').addEventListener('click', () => {
+    const b = $('oClear');
+    if (!armed) { b.textContent = t('diary.clearSure'); armed = setTimeout(() => { armed = null; b.textContent = t('diary.clear'); }, 4000); return; }
+    clearTimeout(armed); armed = null; b.textContent = t('diary.clear');
+    outages = []; saveOutages(); renderDiary();
+  });
+  $('oExport').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify({ app: 'satellites-overhead', kind: 'outages', v: 1, outages }, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `starlink-vypadky-${toLocalInput(new Date()).slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $('oImport').addEventListener('click', () => $('oFile').click());
+  $('oFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    $('diaryMsg').textContent = '';
+    try {
+      if (f.size > 2e6) throw new Error('size');
+      const j = JSON.parse(await f.text());
+      const add = sanitizeOutages(Array.isArray(j) ? j : j && j.outages);
+      if (!add.length) throw new Error('empty');
+      const have = new Set(outages.map(o => o.t + '|' + o.note));
+      const fresh = add.filter(o => !have.has(o.t + '|' + o.note));
+      outages = sanitizeOutages([...fresh, ...outages]); saveOutages(); renderDiary();
+      $('diaryMsg').textContent = t('diary.imported', { n: fresh.length });
+    } catch { $('diaryMsg').textContent = t('diary.importBad'); }
+  });
+  renderDiary();
+}
+
 function handoverInfo(date) {
   const sec = (date.getTime() / 1000) % 60;
   let rem = (((12 - sec) % 15) + 15) % 15; // přepnutí v sekundách :12, :27, :42, :57
@@ -392,11 +569,7 @@ const EXTINCTION = 0.2; // mag na jednu vzduchovou hmotu nad zenitem
 let recentLaunchKey = Infinity;
 function updateRecentLaunch() {
   let max = 0;
-  for (const s of sats) {
-    if (!s.isStarlink) continue;
-    const c = /^(\d{4})-(\d{3})/.exec(s.cospar || '');
-    if (c) max = Math.max(max, +c[1] * 1000 + +c[2]);
-  }
+  for (const s of sats) if (s.isStarlink) max = Math.max(max, launchKey(s));
   if (!max) { recentLaunchKey = Infinity; return; }
   const y = Math.floor(max / 1000), n = max % 1000;
   recentLaunchKey = n > 60 ? max - 60 : (y - 1) * 1000 + 250 + n; // přes přelom roku přibližně
@@ -405,8 +578,7 @@ function stdMag(s) {
   // k = váha fázového členu; ploché ztlumené satelity (Starlink, OneWeb) se s fází mění méně než koule
   if (s.id === 25544) return { m: -1.8, k: 1, model: 'iss' };
   if (s.isStarlink) {
-    const c = /^(\d{4})-(\d{3})/.exec(s.cospar || '');
-    const key = c ? +c[1] * 1000 + +c[2] : 0;
+    const key = launchKey(s);
     // čerstvě vypuštěné, které ještě stoupají (letí natočené a bývají výrazně jasnější);
     // dosluhující nízko letící satelity mají běžnou jasnost, jen jsou blíž
     if (s.ok && s.alt < 420 && key >= recentLaunchKey) return { m: 4.0, k: 0.5, model: 'slLow' };
@@ -1163,6 +1335,7 @@ function tick(force = false) {
   if (force || Date.now() - lastUi > 900) {
     lastUi = Date.now();
     renderTable(); renderSelected(); renderStatus(); renderObst();
+    $('diaryNeed').hidden = state.dish.on && state.obs.kind !== 'region';
     $('clockLocal').textContent = date.toLocaleString(getLang(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     $('clockUtc').textContent = date.toISOString().slice(11, 19) + ' ' + t('time.utc');
   }
@@ -1176,6 +1349,7 @@ function applyLanguage() {
   $('minElVal').textContent = state.minEl + '°';
   if ($('loading').hidden === false) $('loading').textContent = t('loading');
   if (state.picking) $('pickWhat').textContent = t(state.picking === 'gw' ? 'pick.gw' : 'pick.obs');
+  if ($('diaryList')) renderDiary();
   tick(true);
 }
 
@@ -1328,6 +1502,7 @@ function initUI() {
   $('eyeOnly').addEventListener('change', e => { state.eyeOnly = e.target.checked; persist(); renderTable(); });
   $('eyeLimit').value = String(state.eyeLimit);
   $('eyeLimit').addEventListener('change', e => { state.eyeLimit = +e.target.value; persist(); passesFor = null; tick(true); });
+  initDiary();
   $('visTable').addEventListener('click', e => {
     const tr = e.target.closest('tr[data-id]'); if (!tr) return;
     const s = sats.find(x => x.id === +tr.dataset.id);

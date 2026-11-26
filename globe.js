@@ -3,10 +3,19 @@
 const CESIUM_VER = '1.146.0';
 const BASE = `https://cdn.jsdelivr.net/npm/cesium@${CESIUM_VER}/Build/Cesium/`;
 
-function loadScript(src) {
+// Kontrolní otisky (SRI): prohlížeč spustí jen přesně tyto soubory. Při změně CESIUM_VER je nutné přepočítat
+// (otisk musí souhlasit na jsDelivr i unpkg): curl -sL URL | openssl dgst -sha384 -binary | openssl base64 -A
+// Pomocné soubory, které si Cesium dotahuje samo (workery, obrázky), otiskem chránit nejde; omezuje je CSP v index.html.
+const SRI = {
+  'Cesium.js': 'sha384-1lWK5deN/B+lLaUw4lk6xKp/L19ii/98SZLk6K8YthDskgvc+GbdixLzbCnSS2Wn',
+  'widgets.css': 'sha384-ghEeMdcWWzRv/BPeUcX835vcKDGrxvROXisl/Btpv3GeekBUXTSPVcFJpI1Tcrgp',
+};
+
+function loadScript(src, integrity) {
   return new Promise((ok, fail) => {
     const s = document.createElement('script');
-    s.src = src; s.onload = ok; s.onerror = () => fail(new Error('script ' + src));
+    s.src = src; s.integrity = integrity; s.crossOrigin = 'anonymous';
+    s.onload = ok; s.onerror = () => fail(new Error('script ' + src));
     document.head.appendChild(s);
   });
 }
@@ -15,9 +24,9 @@ export async function initGlobe(el, { onPick }) {
   if (!window.Cesium) {
     window.CESIUM_BASE_URL = BASE;
     const css = document.createElement('link');
-    css.rel = 'stylesheet'; css.href = BASE + 'Widgets/widgets.css';
+    css.rel = 'stylesheet'; css.integrity = SRI['widgets.css']; css.crossOrigin = 'anonymous'; css.href = BASE + 'Widgets/widgets.css';
     document.head.appendChild(css);
-    await loadScript(BASE + 'Cesium.js');
+    await loadScript(BASE + 'Cesium.js', SRI['Cesium.js']);
   }
   const C = window.Cesium;
   const imagery = new C.UrlTemplateImageryProvider({

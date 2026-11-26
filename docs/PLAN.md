@@ -135,6 +135,23 @@ Martin se ptal, „od kterého Starlinku chytám internet“. Vysvětlení v UI:
 - Zobrazení: **zelená** (`SERVE_COLOR` #3ddc84) čára od pozorovatele na mapě, na obloze, v glóbu i ve 3D (zelený paprsek), popisek „tvůj internet (odhad)“, karta „Teď tě nejspíš obsluhuje“ v záložce Můj Starlink s časem přidělení a bránami, na které satelit může posílat data (případně laser).
 - Kandidáti mají žlutou barvu, obsluhující zelenou.
 - Možné zlepšení: věrnější výběr (komunita pozoruje, že plánovač preferuje satelity severně od antény a s velkou elevací, a vyhýbá se geostacionárnímu pásu), ověření proti mapě překážek z antény.
+- 26. 11.: `canServe()` vyřazuje satelity `[DTC]` (Direct to Cell, jen pro mobily), satelity pod 400 km (`SERVE_MIN_ALT`, sestupují) a čerstvě vypuštěné pod 450 km (`RAISING_ALT` + `recentLaunchKey`). Platí pro kandidáty i deník.
+
+### Deník výpadků – hotovo 26. 11. 2026
+Martin chce hledat vzorec ve výpadcích. Požadavek: deník musí být uzavřený, nikdo cizí do něj nesmí zapisovat ani vidět polohu.
+- **Řešení: jen `localStorage['satview-outages']` v prohlížeči uživatele.** Žádný server, žádný účet, nic se neodesílá. Přenos/záloha jen ručně souborem (Exportovat / Importovat JSON). Do jiného prohlížeče se tak nikdo cizí nedostane. Záznamy samy polohu neobsahují (jen čas, délku, důvod, poznámku a spočítaný odhad).
+- Při zápisu `estimateOutage(date)` spočítá a uloží hotová čísla: satelit, který měl úsek (začátek úseku :12/:27/:42/:57, drží se, pokud neopustil zorné pole), azimut/výšku, odklon od osy, vzdálenost, generaci, osvětlení Sluncem, brány (≥ 25°), počet kandidátů, sekundy od/do přepnutí a stáří drah (> 72 h = varování).
+- Souhrn `diarySummary()`: podíl výpadků v okně ±2 s kolem přepnutí (náhodně ~27 %), bez satelitu, medián výšky, ve stínu, nejčastější brána, generace, opakující se satelity, hodiny.
+- Bezpečnost: všechno do HTML jde přes `esc()`; import i čtení z `localStorage` prochází `sanitizeOutages()` (jen známá pole, typy a rozsahy, max. 1000 záznamů, soubor max. 2 MB). Ověřeno podvrženým souborem s `<img onerror>`/`<svg onload>` – nic se nespustí.
+- Ověřeno pro Dešenice (anténa 23,8° / 67,3°): výpadek 19:46:20 → STARLINK-31828, 1° od osy, brány Aerzen / Wola Krobowska, souhlasí s ručním výpočtem.
+
+### Bezpečnost webu (26. 11. 2026)
+- `index.html` má Content-Security-Policy v `<meta>`: skripty jen z vlastního webu, jsDelivr a unpkg (knihovny s pevnou verzí), síť jen na vyjmenované služby, žádné `<object>`, `<base>`, formuláře. `'unsafe-eval'` a `'wasm-unsafe-eval'` vyžaduje CesiumJS. **Novou službu nebo CDN je nutné do CSP dopsat**, jinak ji prohlížeč zablokuje (v konzoli „Refused to …“).
+- Ověřeno bez porušení CSP: mapa, 3D glóbus, 3D okolí (MapLibre, terén, budovy), hledání Nominatim + RÚIAN.
+- Web je statický (GitHub Pages), nemá server ani databázi, do které by šlo zapisovat. Hlavní riziko je převzetí účtu GitHub `kolikkulda` – mít zapnuté dvoufázové ověření (ideálně passkey / bezpečnostní klíč) a nesdílet tokeny.
+- **SRI:** `globe.js` a `local3d.js` načítají Cesium a MapLibre s atributem `integrity` (sha384). Otisky ověřeny shodně z jsDelivr i unpkg. **Při změně verze knihovny přepočítat otisk**, jinak se 3D nenačte. Pomocné soubory, které si Cesium stahuje samo (workery, obrázky), otiskem chránit nejde; ty hlídá CSP.
+- **Nastavení repa (26. 11. 2026):** ruleset „Ochrana main“ (výchozí větev nejde smazat ani přepsat force pushem; běžný push funguje). GitHub Actions omezené jen na akce od GitHubu (`allowed_actions: selected`, `github_owned_allowed`), token workflow jen pro čtení. Úplně vypnout Actions nejde, Pages se sestavují workflowem `pages-build-deployment`.
+- Zkontrolováno: jediný spolupracovník `kolikkulda`, žádné deploy klíče ani webhooky.
 
 ### Nápady na později
 - Domácí pomocník: malý program v domácí síti, který čte data přímo z antény (gRPC na 192.168.100.1:9200) – mapu překážek a směr antény – a určí obsluhující satelit přesněji. Web ho nemůže číst sám (blokuje to prohlížeč a je to tak správně).

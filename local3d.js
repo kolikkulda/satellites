@@ -3,11 +3,18 @@
 const VER = '5.24.1';
 const BASE = `https://unpkg.com/maplibre-gl@${VER}/dist/`;
 const DEM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
+// Kontrolní otisky (SRI): prohlížeč spustí jen přesně tyto soubory. Při změně VER je nutné přepočítat
+// (otisk musí souhlasit na unpkg i jsDelivr): curl -sL URL | openssl dgst -sha384 -binary | openssl base64 -A
+const SRI = {
+  'maplibre-gl.js': 'sha384-nXMl9YiLoSG5KBPTFgvxVuIqQQcqIvo0bFrvoEaGJC6r7IibIzF1S36Zbf/sKBtL',
+  'maplibre-gl.css': 'sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK',
+};
 
-function loadScript(src) {
+function loadScript(src, integrity) {
   return new Promise((ok, fail) => {
     const s = document.createElement('script');
-    s.src = src; s.onload = ok; s.onerror = () => fail(new Error('script ' + src));
+    s.src = src; s.integrity = integrity; s.crossOrigin = 'anonymous';
+    s.onload = ok; s.onerror = () => fail(new Error('script ' + src));
     document.head.appendChild(s);
   });
 }
@@ -16,9 +23,9 @@ const empty = () => ({ type: 'FeatureCollection', features: [] });
 export async function initLocal3D(el, { lat, lon, bearing }) {
   if (!window.maplibregl) {
     const css = document.createElement('link');
-    css.rel = 'stylesheet'; css.href = BASE + 'maplibre-gl.css';
+    css.rel = 'stylesheet'; css.integrity = SRI['maplibre-gl.css']; css.crossOrigin = 'anonymous'; css.href = BASE + 'maplibre-gl.css';
     document.head.appendChild(css);
-    await loadScript(BASE + 'maplibre-gl.js');
+    await loadScript(BASE + 'maplibre-gl.js', SRI['maplibre-gl.js']);
   }
   const ml = window.maplibregl;
   const map = new ml.Map({

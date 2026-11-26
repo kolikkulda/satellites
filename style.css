@@ -245,3 +245,22 @@ tbody tr.low { opacity: .5; }
 .servename { font-size: 18px; font-weight: 700; }
 .serveinfo, .servevia { font-size: 12.5px; color: var(--muted); }
 .list .serving { color: #3ddc84; font-weight: 600; }
+
+/* Deník výpadků (jen v prohlížeči) */
+.diary { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; margin-top: 12px; }
+.diary h3 { margin: 0; }
+.diary .row { margin: 0; }
+.diary .privacy { color: #9fe0b8; }
+.dfields { display: grid; gap: 8px; }
+.dfields .field { grid-template-columns: 1fr; }
+.dfields .field input, .dfields .field select { text-align: left; width: 100%; min-width: 0; }
+.dfields .field .row input { flex: 1; }
+.dfields .field .row button { flex: 0 0 auto; }
+.diary input[type=datetime-local], .diary input[type=text], .diary select { background: #0b111b; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; color-scheme: dark; }
+.dsum { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text); display: grid; gap: 3px; }
+.dsum:empty { display: none; }
+#diaryList li.outage { display: block; font-size: 12.5px; }
+#diaryList .ohead { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+#diaryList .obody { color: var(--muted); margin-top: 2px; }
+#diaryList .obody b { color: var(--text); }
+#diaryList button.del { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 4px; }

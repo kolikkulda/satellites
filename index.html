@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Bezpečnost: stránka smí načítat skripty jen z vlastního webu a dvou CDN s pevnými verzemi knihoven
+     a komunikovat jen s vyjmenovanými datovými službami. Vložený cizí skript by prohlížeč nespustil
+     ani by nemohl nic odeslat jinam. 'unsafe-eval' a 'wasm-unsafe-eval' potřebuje 3D glóbus (CesiumJS).
+     Při přidání nové služby ji sem dopiš. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; worker-src 'self' blob: https://cdn.jsdelivr.net; child-src 'self' blob:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; img-src 'self' data: blob: https://server.arcgisonline.com https://tile.openstreetmap.org https://s3.amazonaws.com https://cdn.jsdelivr.net; font-src 'self' data: https://cdn.jsdelivr.net; connect-src 'self' data: blob: https://celestrak.org https://datasets-server.huggingface.co https://nominatim.openstreetmap.org https://ags.cuzk.cz https://s3.amazonaws.com https://tiles.openfreemap.org https://server.arcgisonline.com https://cdn.jsdelivr.net https://unpkg.com; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Satellites Overhead</title>
 <meta name="description" content="Starlink and other satellites over your location in real time: sky view, ground gateways and the satellites your dish can use. / Starlink a další satelity nad tebou v reálném čase.">
@@ -162,6 +167,48 @@
       <h3><span data-i18n="dish.candidates"></span> <span class="badge" id="candN">0</span></h3>
       <ul id="candList" class="list click"></ul>
       <p class="hint" data-i18n="dish.disclaimer"></p>
+      <p class="hint" data-i18n="dish.excluded"></p>
+
+      <section class="diary">
+        <h3><span data-i18n="diary.title"></span> <span class="badge" id="diaryN">0</span></h3>
+        <p class="hint privacy" data-i18n="diary.private"></p>
+        <p class="warnbox soft" id="diaryNeed" data-i18n="diary.need"></p>
+        <div class="dfields">
+          <div class="field">
+            <label for="oTime" data-i18n="diary.time"></label>
+            <div class="row"><input id="oTime" type="datetime-local" step="1"><button type="button" id="oNow" class="ghost" data-i18n="diary.now"></button></div>
+          </div>
+          <div class="field">
+            <label for="oDur" data-i18n="diary.dur"></label>
+            <input id="oDur" type="text" inputmode="decimal" autocomplete="off" maxlength="6">
+          </div>
+          <div class="field">
+            <label for="oCause" data-i18n="diary.causeL"></label>
+            <select id="oCause">
+              <option value="unknown" data-i18n="diary.cause.unknown"></option>
+              <option value="obstruction" data-i18n="diary.cause.obstruction"></option>
+              <option value="nosat" data-i18n="diary.cause.nosat"></option>
+              <option value="network" data-i18n="diary.cause.network"></option>
+              <option value="other" data-i18n="diary.cause.other"></option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="oNote" data-i18n="diary.note"></label>
+            <input id="oNote" type="text" maxlength="200" autocomplete="off">
+          </div>
+        </div>
+        <div class="row btns"><button type="button" id="oAdd" class="primary" data-i18n="diary.add"></button></div>
+        <ul id="diarySum" class="dsum"></ul>
+        <ul id="diaryList" class="list"></ul>
+        <div class="row btns">
+          <button type="button" id="oExport" data-i18n="diary.export"></button>
+          <button type="button" id="oImport" data-i18n="diary.import"></button>
+          <button type="button" id="oClear" class="ghost" data-i18n="diary.clear"></button>
+          <input type="file" id="oFile" accept="application/json,.json" hidden>
+        </div>
+        <p class="hint" id="diaryMsg" aria-live="polite"></p>
+        <p class="hint" data-i18n="diary.howto"></p>
+      </section>
 
       <details class="how" open>
         <summary data-i18n="dish.how"></summary>
