@@ -119,17 +119,17 @@
       <div class="dishfields">
         <div class="field">
           <label for="dishAz" data-i18n="dish.az"></label>
-          <input id="dishAz" type="text" inputmode="decimal" autocomplete="off">
+          <div class="stepper"><button type="button" class="step" data-for="dishAz" data-dir="-1" tabindex="-1" aria-label="−">−</button><input id="dishAz" type="text" inputmode="decimal" autocomplete="off"><button type="button" class="step" data-for="dishAz" data-dir="1" tabindex="-1" aria-label="+">+</button></div>
           <p class="where" data-i18n-html="dish.azWhereHtml"></p>
         </div>
         <div class="field">
           <label for="dishEl" data-i18n="dish.el"></label>
-          <input id="dishEl" type="text" inputmode="decimal" autocomplete="off">
+          <div class="stepper"><button type="button" class="step" data-for="dishEl" data-dir="-1" tabindex="-1" aria-label="−">−</button><input id="dishEl" type="text" inputmode="decimal" autocomplete="off"><button type="button" class="step" data-for="dishEl" data-dir="1" tabindex="-1" aria-label="+">+</button></div>
           <p class="where" data-i18n-html="dish.elWhereHtml"></p>
         </div>
         <div class="field">
           <label for="dishFov" data-i18n="dish.fov"></label>
-          <input id="dishFov" type="text" inputmode="decimal" autocomplete="off">
+          <div class="stepper"><button type="button" class="step" data-for="dishFov" data-dir="-1" tabindex="-1" aria-label="−">−</button><input id="dishFov" type="text" inputmode="decimal" autocomplete="off"><button type="button" class="step" data-for="dishFov" data-dir="1" tabindex="-1" aria-label="+">+</button></div>
           <p class="where" data-i18n-html="dish.fovWhereHtml"></p>
         </div>
         <p class="warnbox soft" data-i18n-html="dish.notDesiredHtml"></p>
@@ -148,7 +148,7 @@
         <p class="hint" data-i18n="obs3d.intro"></p>
         <div class="field">
           <label for="antH" data-i18n="obs3d.antH"></label>
-          <input id="antH" type="text" inputmode="decimal" autocomplete="off">
+          <div class="stepper"><button type="button" class="step" data-for="antH" data-dir="-1" tabindex="-1" aria-label="−">−</button><input id="antH" type="text" inputmode="decimal" autocomplete="off"><button type="button" class="step" data-for="antH" data-dir="1" tabindex="-1" aria-label="+">+</button></div>
         </div>
         <div class="row btns">
           <button id="btnObst" class="primary" data-i18n="obs3d.btn"></button>

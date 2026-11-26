@@ -137,6 +137,10 @@ Martin se ptal, „od kterého Starlinku chytám internet“. Vysvětlení v UI:
 - Možné zlepšení: věrnější výběr (komunita pozoruje, že plánovač preferuje satelity severně od antény a s velkou elevací, a vyhýbá se geostacionárnímu pásu), ověření proti mapě překážek z antény.
 - 26. 11.: `canServe()` vyřazuje satelity `[DTC]` (Direct to Cell, jen pro mobily), satelity pod 400 km (`SERVE_MIN_ALT`, sestupují) a čerstvě vypuštěné pod 450 km (`RAISING_ALT` + `recentLaunchKey`). Platí pro kandidáty i deník.
 
+### Číselná pole antény (26. 11. 2026)
+- `numField()` v `app.js`: pole azimut (krok 0,1°, přetéká přes 360°), elevace (0,1°), zorné pole (1°) a výška antény (0,5 m) mají tlačítka −/+ (držení opakuje), šipky ↑/↓ (Shift = 10 kroků) a volné psaní s čárkou i tečkou.
+- Pravidlo: pole, do kterého uživatel píše, se nikdy nepřepisuje. Učesaná hodnota se zapíše až po opuštění pole nebo krokem. (Dřív `renderObst()` každou sekundu přepisoval výšku antény zpět na uloženou hodnotu.)
+
 ### Deník výpadků – hotovo 26. 11. 2026
 Martin chce hledat vzorec ve výpadcích. Požadavek: deník musí být uzavřený, nikdo cizí do něj nesmí zapisovat ani vidět polohu.
 - **Řešení: jen `localStorage['satview-outages']` v prohlížeči uživatele.** Žádný server, žádný účet, nic se neodesílá. Přenos/záloha jen ručně souborem (Exportovat / Importovat JSON). Do jiného prohlížeče se tak nikdo cizí nedostane. Záznamy samy polohu neobsahují (jen čas, délku, důvod, poznámku a spočítaný odhad).

@@ -99,6 +99,52 @@ const fmtTime = (d) => d.toLocaleTimeString(getLang(), { hour: '2-digit', minute
 const compass = (az) => t('compass').split(',')[Math.round(az / 45) % 8];
 const dayTag = (ms) => new Date(ms).toDateString() === simNow().toDateString() ? '' :
   new Date(ms).toLocaleDateString(getLang(), { day: 'numeric', month: 'numeric' }) + ' ';
+// číslo do pole: desetinná čárka/tečka podle jazyka, bez mezer mezi tisíci, bez zbytečných nul
+const fmtField = (v, dec) => (v == null ? '' : new Intl.NumberFormat(getLang(), { maximumFractionDigits: dec, useGrouping: false }).format(v));
+const parseField = (s) => { const v = parseFloat(String(s).trim().replace(/\s/g, '').replace(',', '.')); return isFinite(v) ? v : null; };
+// Pole s tlačítky −/+ (držení = opakování), šipkami ↑/↓ (Shift = 10 kroků) a volným psaním.
+function numField(id, o) {
+  const inp = $(id);
+  const clamp = (v) => {
+    if (o.wrap) { const span = o.max - o.min; v = ((v - o.min) % span + span) % span + o.min; }
+    return Math.min(o.max, Math.max(o.min, v));
+  };
+  const round = (v) => Math.round(v / o.step) * o.step;
+  const show = () => { inp.value = fmtField(o.get(), o.dec); };
+  inp.placeholder = fmtField(o.def, o.dec);
+  show();
+  inp.addEventListener('input', () => {
+    const v = parseField(inp.value);
+    if (inp.value.trim() === '') o.set(null);
+    else if (v != null && v >= o.min && v <= o.max) o.set(v);
+  });
+  inp.addEventListener('blur', () => {
+    const v = parseField(inp.value);
+    if (v != null) o.set(+clamp(v).toFixed(o.dec));
+    show();
+  });
+  const step = (dir, mult = 1) => {
+    const cur = parseField(inp.value) ?? o.get() ?? o.def;
+    const v = +clamp(round(cur + dir * o.step * mult)).toFixed(o.dec);
+    o.set(v); show();
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault(); step(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey ? 10 : 1);
+  });
+  for (const b of document.querySelectorAll(`.step[data-for="${id}"]`)) {
+    const dir = +b.dataset.dir;
+    let timer = null, rep = null;
+    const stop = () => { clearTimeout(timer); clearInterval(rep); timer = rep = null; };
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault(); stop(); step(dir);
+      timer = setTimeout(() => { rep = setInterval(() => step(dir), 70); }, 400);
+      b.setPointerCapture?.(e.pointerId);
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => b.addEventListener(ev, stop));
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); step(dir); } });
+  }
+}
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function countryName(cc) {
   try { return new Intl.DisplayNames([getLang()], { type: 'region' }).of(cc); } catch { return cc; }
@@ -1217,7 +1263,7 @@ function updateLocal(force = false) {
 
 function renderObst() {
   const m = maskMatches();
-  $('antH').value = state.obst.antH;
+  if (document.activeElement !== $('antH')) $('antH').value = fmtField(state.obst.antH, 1);
   $('obstUseL').hidden = !maskData;
   $('obstUse').checked = state.obst.use;
   $('obstBtns').hidden = !maskData;
@@ -1475,14 +1521,21 @@ function initUI() {
   // anténa
   const d = state.dish;
   $('dishOn').checked = d.on;
-  $('dishAz').value = d.az ?? ''; $('dishEl').value = d.el ?? ''; $('dishFov').value = d.fov ?? 100;
-  const dp = dishParams(); $('dishAz').placeholder = dp.az; $('dishEl').placeholder = dp.el;
-  const onDish = () => {
-    const num = (id, lo, hi) => { const v = parseFloat($(id).value.replace(',', '.')); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null; };
-    state.dish = { on: $('dishOn').checked, az: num('dishAz', 0, 360), el: num('dishEl', 0, 90), fov: num('dishFov', 20, 160) || 100 };
-    servingSlot = null; persist(); renderLocation(); tick(true);
-  };
-  ['dishOn', 'dishAz', 'dishEl', 'dishFov'].forEach(id => $(id).addEventListener('input', onDish));
+  const dp = dishParams();
+  // Číselná pole s tlačítky −/+ a šipkami. Při psaní se pole nikdy nepřepisuje, hodnota se jen převezme;
+  // učesaný tvar (rozsah, desetinná čárka) se do pole zapíše až po opuštění pole nebo krokem.
+  let tickQueued = false;
+  const tickSoon = () => { if (!tickQueued) { tickQueued = true; requestAnimationFrame(() => { tickQueued = false; tick(true); }); } };
+  const onDish = () => { servingSlot = null; persist(); renderLocation(); tickSoon(); };
+  numField('dishAz', { min: 0, max: 360, step: 0.1, dec: 1, wrap: true, get: () => state.dish.az, def: dp.az,
+    set: v => { state.dish.az = v; onDish(); } });
+  numField('dishEl', { min: 0, max: 90, step: 0.1, dec: 1, get: () => state.dish.el, def: dp.el,
+    set: v => { state.dish.el = v; onDish(); } });
+  numField('dishFov', { min: 20, max: 160, step: 1, dec: 0, get: () => state.dish.fov ?? 100, def: 100,
+    set: v => { state.dish.fov = v ?? 100; onDish(); } });
+  numField('antH', { min: 0, max: 300, step: 0.5, dec: 1, get: () => state.obst.antH, def: 3,
+    set: v => { if (v == null) return; state.obst.antH = Math.round(v * 10) / 10; persist(); renderObst(); tickSoon(); } });
+  $('dishOn').addEventListener('input', () => { state.dish.on = $('dishOn').checked; onDish(); });
   $('localHint').addEventListener('click', () => { $('localHint').hidden = true; });
   $('serveCard').addEventListener('click', () => { if (serving) selectSat(serving, true); });
   $('candList').addEventListener('click', e => { const li = e.target.closest('li[data-id]'); if (li) selectSat(sats.find(s => s.id === +li.dataset.id), true); });
@@ -1521,10 +1574,6 @@ function initUI() {
     $('loading').hidden = false; $('loading').textContent = t('loading');
     await loadGroups(true); $('loading').hidden = true;
   };
-  $('antH').addEventListener('change', () => {
-    const v = parseFloat($('antH').value.replace(',', '.'));
-    if (isFinite(v) && v >= 0 && v <= 300) { state.obst.antH = Math.round(v * 10) / 10; persist(); renderObst(); tick(true); }
-  });
   $('obstUse').addEventListener('change', e => { state.obst.use = e.target.checked; persist(); tick(true); });
   $('btnObst').onclick = () => showView('local');
   $('btnObstRe').onclick = async () => { if (await openLocal()) { if (state.view !== 'local') await showView('local'); computeObstructions(); } };
