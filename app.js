@@ -5,6 +5,8 @@ import * as S from './vendor/satellite.esm.js';
 import { t, LANGS, detectLang, setLang, getLang, applyStatic } from './i18n.js';
 import { TZ_REGIONS } from './tz-regions.js';
 import { initGlobe } from './globe.js';
+import { initLocal3D } from './local3d.js';
+import { loadDem, computeMask, blockedFraction } from './horizon.js';
 
 const R_EARTH = 6371.0;
 const DEG = Math.PI / 180;
@@ -14,6 +16,7 @@ const GW_MAX_AGE = 24 * 3600e3;
 const AU_KM = 149597870.7;
 const EYE_SUN_MAX = -6;          // Slunce aspoň 6° pod obzorem (občanský soumrak)
 const EYE_SAT_MIN = 10;          // satelit aspoň 10° nad obzorem
+const MASK_RADIUS = 8000;        // dosah terénu pro masku obzoru (m)
 const CACHE_NAME = 'satview-v1';
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -61,11 +64,12 @@ const state = {
   speed: 1, baseReal: Date.now(), baseSim: Date.now(),
   selected: null, picking: null, filter: '',
   eyeOnly: !!saved.eyeOnly, view: 'map',
+  obst: saved.obst || { use: true, antH: 3 }, consent3d: !!saved.consent3d,
 };
 setLang(detectLang(saved.lang));
 const persist = () => store.set({
   obs: state.obs.kind === 'region' ? null : state.obs, minEl: state.minEl, groups: state.groups, toggles: state.toggles,
-  customGws: state.customGws, base: state.base, dish: state.dish, tab: state.tab, lang: getLang(), eyeOnly: state.eyeOnly });
+  customGws: state.customGws, base: state.base, dish: state.dish, tab: state.tab, lang: getLang(), eyeOnly: state.eyeOnly, obst: state.obst, consent3d: state.consent3d });
 const simNow = () => new Date(state.baseSim + (Date.now() - state.baseReal) * state.speed);
 
 let sats = [];
@@ -75,7 +79,17 @@ let passes = [], passesFor = null;
 let medianAlt = 550;
 let candidates = [];
 let sunEl = 0, eyeCount = 0;
+// odhad satelitu, který anténu právě obsluhuje: drží se celý 15s úsek plánovače
+let serving = null, servingSlot = null, servingSince = 0;
+const SERVE_COLOR = '#3ddc84';
 let globe = null, globeLoading = false;
+let local = null, localLoading = false, maskBusy = false;
+// maska obzoru: { lat, lon, antH, mask[360], ground, h0, buildings, at } – jen v tomto prohlížeči
+let maskData = (() => { try { return JSON.parse(localStorage.getItem('satview-mask') || 'null'); } catch { return null; } })();
+const maskMatches = () => maskData && Math.abs(maskData.lat - state.obs.lat) < 0.006 && Math.abs(maskData.lon - state.obs.lon) < 0.006
+  && maskData.antH === state.obst.antH;
+const activeMask = () => (state.obst.use && maskMatches() ? maskData.mask : null);
+const isBlocked = (m, az, el) => !!m && el <= m[Math.floor(((az % 360) + 360) % 360)];
 
 // ---------- formátování ----------
 const nf = (d = 0) => new Intl.NumberFormat(getLang(), { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -324,16 +338,25 @@ function dishParams() {
   const d = state.dish;
   return { az: d.az ?? (state.obs.lat >= 0 ? 0 : 180), el: d.el ?? 65, fov: d.fov || 100 };
 }
-function computeCandidates() {
-  if (!state.dish.on) { candidates = []; return; }
+function computeCandidates(date) {
+  if (!state.dish.on) { candidates = []; serving = null; servingSlot = null; return; }
   const p = dishParams(), axis = enu(p.az, p.el);
   candidates = [];
   for (const s of sats) {
-    if (!s.ok || !s.isStarlink || s.el < state.minEl) continue;
+    if (!s.ok || !s.isStarlink || s.el < state.minEl || s.blocked) continue;
     const off = angBetween(axis, enu(s.az, s.el));
     if (off <= p.fov / 2) candidates.push({ s, off });
   }
   candidates.sort((a, b) => a.off - b.off);
+  // nový úsek začíná v sekundách :12, :27, :42, :57; uprostřed úseku se mění jen když satelit zmizí ze zorného pole
+  const slot = Math.floor((date.getTime() / 1000 - 12) / 15);
+  const stillOk = serving && candidates.some(c => c.s === serving);
+  if (slot !== servingSlot || !stillOk) {
+    const next = candidates[0]?.s || null;
+    // čas přidělení = začátek úseku; jen když satelit zmizí uprostřed úseku, je to tento okamžik
+    if (next !== serving) servingSince = serving && slot === servingSlot ? date.getTime() : (slot * 15 + 12) * 1000;
+    serving = next; servingSlot = slot;
+  }
 }
 function handoverInfo(date) {
   const sec = (date.getTime() / 1000) % 60;
@@ -377,8 +400,10 @@ function propagateAll(date) {
   }
   const sun = sunAt(date);
   sunEl = sun.el; eyeCount = 0;
+  const m = activeMask();
   for (const s of sats) {
-    if (!s.ok || s.el < 0) continue;
+    if (!s.ok || s.el < 0) { s.blocked = false; continue; }
+    s.blocked = isBlocked(m, s.az, s.el);
     s.light = lightState(sun, s.eci, s.el);
     if (s.light === 'eye') eyeCount++;
   }
@@ -494,12 +519,12 @@ function draw() {
   const above = visible.filter(s => s.el >= minEl);
   const linkSats = T.links ? above.filter(s => s.isStarlink) : [];
   if (sel && sel.isStarlink && sel.ok && !linkSats.includes(sel)) linkSats.push(sel);
-  if (state.dish.on && candidates[0] && !linkSats.includes(candidates[0].s)) linkSats.push(candidates[0].s);
+  if (serving && !linkSats.includes(serving)) linkSats.push(serving);
   const gws = allGateways().filter(g => g.status !== 'planned' || T.gwPlanned);
   const activeGw = new Set();
   for (const s of linkSats) {
     const sx = screenPts[s.i * 2], sy = screenPts[s.i * 2 + 1];
-    const strong = s === sel || (candidates[0] && s === candidates[0].s);
+    const strong = s === sel || s === serving;
     for (const g of gws) {
       if (!satSeesPoint(s, g.lat, g.lon, GW_MIN_EL)) continue;
       activeGw.add(g);
@@ -543,8 +568,8 @@ function draw() {
   candidates.forEach(({ s }, idx) => {
     copies(screenPts[s.i * 2], x => {
       const y = screenPts[s.i * 2 + 1];
-      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = idx === 0 ? 3 : 1.5;
-      ctx.beginPath(); ctx.arc(x, y, idx === 0 ? 11 : 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
     });
   });
 
@@ -552,8 +577,21 @@ function draw() {
     ctx.font = '600 12px Inter, -apple-system, system-ui, sans-serif'; ctx.fillStyle = '#fff';
     ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fillText(s.name, x + 14, y + 4); ctx.shadowBlur = 0;
   };
-  if (state.dish.on && candidates[0] && candidates[0].s !== sel) {
-    const s = candidates[0].s; copies(screenPts[s.i * 2], x => label(s, x, screenPts[s.i * 2 + 1]));
+  // obsluhující satelit: zelená čára od pozorovatele, zelený kruh a popisek
+  if (serving && serving.ok) {
+    const s = serving, sx = screenPts[s.i * 2], sy = screenPts[s.i * 2 + 1];
+    let dx = sx - obsP.x; dx -= Math.round(dx / W) * W;
+    ctx.strokeStyle = SERVE_COLOR; ctx.lineWidth = 3.5; ctx.shadowColor = SERVE_COLOR; ctx.shadowBlur = 8;
+    copies(obsP.x, x => { ctx.beginPath(); ctx.moveTo(x, obsP.y); ctx.lineTo(x + dx, sy); ctx.stroke(); });
+    ctx.shadowBlur = 0;
+    copies(sx, x => {
+      ctx.strokeStyle = SERVE_COLOR; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, sy, 12, 0, Math.PI * 2); ctx.stroke();
+      if (s !== sel) {
+        ctx.font = '600 12px Inter, -apple-system, system-ui, sans-serif'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+        ctx.fillStyle = '#fff'; ctx.fillText(s.name, x + 16, sy);
+        ctx.fillStyle = SERVE_COLOR; ctx.fillText(t('serve.label'), x + 16, sy + 15); ctx.shadowBlur = 0;
+      }
+    });
   }
   if (sel && sel.ok) {
     copies(screenPts[sel.i * 2], x => {
@@ -601,6 +639,20 @@ function drawSky() {
     sctx.restore();
   }
 
+  const m = activeMask();
+  $('legMask').hidden = !m;
+  if (m) {
+    sctx.beginPath();
+    sctx.arc(c, c, r, 0, Math.PI * 2);
+    for (let a = 360; a >= 0; a--) {
+      const el = Math.max(0, Math.min(89, m[a % 360]));
+      const [x, y] = toXY(a, el);
+      a === 360 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
+    }
+    sctx.closePath();
+    sctx.fillStyle = 'rgba(120,130,150,0.55)'; sctx.fill('evenodd');
+  }
+
   const cmp = t('compass').split(',');
   sctx.fillStyle = '#8b97ad'; sctx.font = '600 11px Inter, system-ui'; sctx.textAlign = 'center'; sctx.textBaseline = 'middle';
   sctx.fillText(cmp[0], c, 7); sctx.fillText(cmp[4], c, Wc - 7); sctx.fillText(cmp[2], Wc - 7, c); sctx.fillText(cmp[6], 7, c);
@@ -622,16 +674,27 @@ function drawSky() {
     const [x, y] = toXY(s.az, s.el);
     skyPts.push([x, y, s]);
     const good = s.el >= state.minEl;
+    if (s.blocked) {
+      sctx.strokeStyle = s.color; sctx.globalAlpha = 0.7; sctx.lineWidth = 1;
+      sctx.beginPath(); sctx.arc(x, y, 2.6, 0, Math.PI * 2); sctx.stroke(); sctx.globalAlpha = 1;
+      continue;
+    }
     sctx.fillStyle = s.color; sctx.globalAlpha = good ? 1 : 0.45;
     sctx.beginPath(); sctx.arc(x, y, good ? 3.2 : 2, 0, Math.PI * 2); sctx.fill();
     if (s.light === 'eye') { sctx.globalAlpha = 1; sctx.strokeStyle = '#9be7ff'; sctx.lineWidth = 1; sctx.beginPath(); sctx.arc(x, y, 5, 0, Math.PI * 2); sctx.stroke(); }
   }
   sctx.globalAlpha = 1;
-  candidates.forEach(({ s }, idx) => {
+  candidates.forEach(({ s }) => {
     const [x, y] = toXY(s.az, s.el);
-    sctx.strokeStyle = '#ffd166'; sctx.lineWidth = idx === 0 ? 2.5 : 1.2;
-    sctx.beginPath(); sctx.arc(x, y, idx === 0 ? 7 : 5, 0, Math.PI * 2); sctx.stroke();
+    sctx.strokeStyle = '#ffd166'; sctx.lineWidth = 1.2;
+    sctx.beginPath(); sctx.arc(x, y, 5, 0, Math.PI * 2); sctx.stroke();
   });
+  if (serving && serving.ok && serving.el >= 0) {
+    const [x, y] = toXY(serving.az, serving.el);
+    sctx.strokeStyle = SERVE_COLOR; sctx.lineWidth = 2.5;
+    sctx.beginPath(); sctx.moveTo(c, c); sctx.lineTo(x, y); sctx.stroke();
+    sctx.beginPath(); sctx.arc(x, y, 7, 0, Math.PI * 2); sctx.stroke();
+  }
   if (sel && sel.ok && sel.el >= 0) {
     const [x, y] = toXY(sel.az, sel.el);
     sctx.strokeStyle = '#fff'; sctx.lineWidth = 2; sctx.beginPath(); sctx.arc(x, y, 8, 0, Math.PI * 2); sctx.stroke();
@@ -667,7 +730,8 @@ function renderTable() {
   $('stGoodL').textContent = t('stat.good', { minEl: state.minEl });
   $('stStarlink').textContent = good.filter(s => s.isStarlink).length;
   $('stHorizon').textContent = vis.length;
-  const eyeB = (s) => s.light === 'eye' ? `<span class="eye">${esc(t('vis.badge'))}</span>` : '';
+  const eyeB = (s) => (s.light === 'eye' && !s.blocked ? `<span class="eye">${esc(t('vis.badge'))}</span>` : '') +
+    (s.blocked ? `<span class="blk">${esc(t('sky.blocked'))}</span>` : '');
   $('sunInfo').textContent = t('vis.sun', { el: nf(0).format(sunEl) });
   $('eyeTip').hidden = !state.eyeOnly;
   let rows;
@@ -684,7 +748,7 @@ function renderTable() {
   }
   $('visTable').tBodies[0].innerHTML = rows.map(s => {
     const up = s.ok && s.el >= 0;
-    return `<tr data-id="${s.id}" class="${s === state.selected ? 'sel' : ''} ${!up || s.el < state.minEl ? 'low' : ''}">` +
+    return `<tr data-id="${s.id}" class="${s === state.selected ? 'sel' : ''} ${!up || s.el < state.minEl || s.blocked ? 'low' : ''}">` +
       `<td><span class="dot" style="background:${s.color}"></span>${esc(s.name)}${eyeB(s)}</td>` +
       (up ? `<td>${nf(1).format(s.el)}°</td><td>${Math.round(s.az)}° ${compass(s.az)}</td><td>${fmtKm(s.range)}</td>`
           : `<td colspan="3" class="muted">${esc(t('sky.below'))}</td>`) + '</tr>';
@@ -725,7 +789,9 @@ function renderSelected() {
     const key = { eye: 'vis.yes', day: 'vis.sunlit', low: 'vis.low', shadow: 'vis.shadow' }[s.light];
     eyeRow = `<dt>${esc(t('vis.row'))}</dt><dd class="${s.light === 'eye' ? 'eyeyes' : ''}">${esc(t(key))}</dd>`;
   }
-  $('selInfo').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('') + eyeRow + dishRow;
+  let viewRow = '';
+  if (activeMask() && s.ok && s.el >= 0) viewRow = `<dt>${esc(t('sel.view'))}</dt><dd>${esc(t(s.blocked ? 'sel.blockedYes' : 'sel.blockedNo'))}</dd>`;
+  $('selInfo').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('') + viewRow + eyeRow + dishRow;
 
   $('selPassesT').textContent = t('sel.passes', { minEl: state.minEl });
   const now = simNow().getTime();
@@ -745,16 +811,32 @@ function renderSelected() {
   }).join('') : `<li class="muted">${esc(t(s.isStarlink ? 'sel.noGwStarlink' : 'sel.noGwOther'))}</li>`;
 }
 
+function renderServe() {
+  const card = $('serveCard');
+  if (!state.dish.on) { card.dataset.state = 'off'; $('serveName').textContent = '—'; $('serveInfo').textContent = t('serve.off'); $('serveVia').textContent = ''; return; }
+  const s = serving;
+  if (!s) { card.dataset.state = 'none'; $('serveName').textContent = '—'; $('serveInfo').textContent = t('serve.none'); $('serveVia').textContent = ''; return; }
+  card.dataset.state = 'on'; card.dataset.id = s.id;
+  $('serveName').textContent = s.name;
+  $('serveInfo').textContent = t('serve.info', { el: nf(0).format(s.el), az: Math.round(s.az), dir: compass(s.az), km: nf(0).format(s.range),
+    since: fmtTime(new Date(servingSince)) });
+  const gws = allGateways().filter(g => g.status !== 'planned' && satSeesPoint(s, g.lat, g.lon, GW_MIN_EL))
+    .map(g => ({ g, el: elevFromCentral(centralAngle(s.lat, s.lon, g.lat, g.lon), s.alt) })).sort((a, b) => b.el - a.el);
+  $('serveVia').textContent = gws.length ? t('serve.via', { gw: gws.map(x => x.g.name).slice(0, 3).join(', ') }) : t('serve.viaLaser');
+}
+
 function renderDish(date) {
   $('legCand').hidden = !state.dish.on;
+  $('legServe').hidden = !state.dish.on;
+  renderServe();
   const rem = handoverInfo(date);
   $('hoSec').textContent = state.speed === 1 ? `${Math.ceil(rem)} s` : '–';
   $('hoBar').style.width = state.speed === 1 ? `${(1 - rem / 15) * 100}%` : '0';
   $('candN').textContent = candidates.length;
   if (!state.dish.on) { $('candList').innerHTML = ''; return; }
   $('candList').innerHTML = candidates.length ? candidates.slice(0, 12).map((c, i) =>
-    `<li data-id="${c.s.id}"><span class="${i === 0 ? 'likely' : ''}"><span class="dot" style="background:${c.s.color}"></span>${esc(c.s.name)}` +
-    `${i === 0 ? ' · ' + esc(t('dish.likely')) : ''}</span><span class="tag">${nf(0).format(c.s.el)}° · ${esc(t('dish.offAxis', { deg: nf(0).format(c.off) }))}</span></li>`
+    `<li data-id="${c.s.id}"><span class="${c.s === serving ? 'serving' : ''}"><span class="dot" style="background:${c.s.color}"></span>${esc(c.s.name)}` +
+    `${c.s === serving ? ' · ' + esc(t('dish.serving')) : ''}</span><span class="tag">${nf(0).format(c.s.el)}° · ${esc(t('dish.offAxis', { deg: nf(0).format(c.off) }))}</span></li>`
   ).join('') : `<li class="muted">${esc(t('dish.none'))}</li>`;
 }
 
@@ -805,6 +887,8 @@ function setObserver(lat, lon, kind, pan = true, name = null) {
   state.obs = { lat: round2(+lat), lon: round2(normLon(+lon)), kind, name };
   obsMarker.setLatLng([state.obs.lat, state.obs.lon]);
   if (pan) { map.panTo([state.obs.lat, state.obs.lon]); if (state.view === 'globe') globe?.flyTo(state.obs.lat, state.obs.lon); }
+  local?.setObserver(state.obs.lat, state.obs.lon);
+  if (state.view === 'local' && kind !== 'region' && kind !== 'world' && !maskMatches()) computeObstructions();
   updateCoverage(); renderNearGateways(); renderLocation(); persist();
   passesFor = null; tick(true);
 }
@@ -838,26 +922,142 @@ function updateGlobe(date) {
   const above = sats.filter(s => s.ok && s.el >= state.minEl);
   const linkSats = (T.links ? above.filter(s => s.isStarlink) : []);
   if (sel && sel.isStarlink && sel.ok && !linkSats.includes(sel)) linkSats.push(sel);
-  if (state.dish.on && candidates[0] && !linkSats.includes(candidates[0].s)) linkSats.push(candidates[0].s);
+  if (serving && !linkSats.includes(serving)) linkSats.push(serving);
   const gws = allGateways().filter(g => g.status !== 'planned' || T.gwPlanned);
   const links = [];
   for (const s of linkSats) for (const g of gws) {
-    if (satSeesPoint(s, g.lat, g.lon, GW_MIN_EL)) links.push([s, g, s === sel || (candidates[0] && s === candidates[0].s)]);
+    if (satSeesPoint(s, g.lat, g.lon, GW_MIN_EL)) links.push([s, g, s === sel || s === serving]);
   }
   if (sel && sel.ok && (orbitCache.id !== sel.id || Date.now() - orbitCache.at > 20000 || state.speed > 1)) {
     orbitCache = { id: sel.id, at: Date.now(), pts: orbitEcf(sel, date) };
   }
   globe.update({
-    date, sats, selected: sel, candidates, obs: state.obs, minEl: state.minEl, showDim: T.dim,
+    date, sats, selected: sel, candidates, serving: serving && serving.ecf ? serving : null, obs: state.obs, minEl: state.minEl, showDim: T.dim,
     rays: T.rays ? above.filter(s => s.ecf) : (sel && sel.el >= state.minEl ? [sel] : []),
     links: links.filter(([s]) => s.ecf), orbit: sel && sel.ok ? orbitCache.pts : null,
   });
 }
 
+// ---------- 3D okolí a překážky ----------
+const isRegion = () => state.obs.kind === 'region' || state.obs.kind === 'world';
+function inDishCone() {
+  const p = dishParams(), axis = enu(p.az, p.el), half = p.fov / 2;
+  return (az, el) => angBetween(axis, enu(az, el)) <= half;
+}
+let lastLocal = 0;
+function updateLocal(force = false) {
+  if (!local || state.view !== 'local' || (!force && Date.now() - lastLocal < 1000)) return;
+  lastLocal = Date.now();
+  const o = state.obs, H = 150; // průmět směru do výšky 150 m nad anténou
+  const toGround = (az, el) => {
+    const d = Math.min(900, H / Math.tan(Math.max(el, 4) * DEG));
+    const [la, lo] = destination(o.lat, o.lon, az, d / (R_EARTH * 1000));
+    return [lo, la];
+  };
+  let fov = null;
+  if (state.dish.on) {
+    const p = dishParams();
+    fov = coneBoundary(p.az, p.el, p.fov / 2, 90).map(d => toGround(d.az, Math.max(d.el, state.minEl)));
+  }
+  const list = state.dish.on ? [serving, ...candidates.map(c => c.s).filter(x => x !== serving)].filter(Boolean).slice(0, 10)
+    : sats.filter(s => s.ok && s.el >= state.minEl).sort((a, b) => b.el - a.el).slice(0, 12);
+  if (state.dish.on) list.push(...sats.filter(s => s.ok && s.blocked && s.isStarlink && s.el >= state.minEl).slice(0, 6));
+  const rays = list.map((s, i) => ({ coords: [[o.lon, o.lat], toGround(s.az, s.el)], top: s === serving, blocked: s.blocked }));
+  // 3D paprsky: kvádry 2,5 × 2,5 m po 6 m výšky, od antény do 150 m nad ní
+  const beams = [], antH = state.obst.antH;
+  const mPerDegLat = 111320, mPerDegLon = 111320 * Math.cos(o.lat * DEG), half = 1.25;
+  list.forEach((s, i) => {
+    const top = rays[i].top, color = s.blocked ? '#7b8494' : top ? SERVE_COLOR : '#ffd166';
+    const tanEl = Math.tan(Math.max(s.el, 3) * DEG), sa = Math.sin(s.az * DEG), ca = Math.cos(s.az * DEG);
+    for (let h = 6; h <= H; h += 6) {
+      const d = h / tanEl;
+      if (d > 900) break;
+      const x = d * sa, y = d * ca;
+      const ring = [[-half, -half], [half, -half], [half, half], [-half, half], [-half, -half]]
+        .map(([dx, dy]) => [o.lon + (x + dx) / mPerDegLon, o.lat + (y + dy) / mPerDegLat]);
+      beams.push({ poly: ring, base: antH + h - 2, top: antH + h + 2, color });
+    }
+  });
+  local.setOverlays(fov, rays, beams);
+}
+
+function renderObst() {
+  const m = maskMatches();
+  $('antH').value = state.obst.antH;
+  $('obstUseL').hidden = !maskData;
+  $('obstUse').checked = state.obst.use;
+  $('obstBtns').hidden = !maskData;
+  const st = $('obstStatus');
+  if (maskBusy) { st.hidden = false; st.textContent = t('obs3d.computing', { km: MASK_RADIUS / 1000 }); }
+  else if (maskData && !m) { st.hidden = false; st.textContent = t('obs3d.stale'); }
+  else if (maskData) {
+    st.hidden = false;
+    st.textContent = t('obs3d.done', { when: new Date(maskData.at).toLocaleString(getLang(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      km: MASK_RADIUS / 1000, n: maskData.buildings, h: maskData.h0 });
+  } else st.hidden = true;
+  const showPct = !!activeMask() && state.dish.on;
+  $('obstPct').hidden = !showPct; $('obstPctApp').hidden = !showPct;
+  if (showPct) $('obstPct').textContent = t('obs3d.pct', { p: nf(1).format(blockedFraction(maskData.mask, inDishCone(), state.minEl) * 100) });
+}
+
+async function computeObstructions() {
+  if (maskBusy || !local) return;
+  maskBusy = true; renderObst();
+  try {
+    const o = state.obs;
+    const [buildings, dem] = await Promise.all([local.buildings(), loadDem(o.lat, o.lon, MASK_RADIUS)]);
+    const res = computeMask(dem, o.lat, o.lon, state.obst.antH, buildings, MASK_RADIUS);
+    maskData = { lat: o.lat, lon: o.lon, antH: state.obst.antH, ...res, at: Date.now() };
+    try { localStorage.setItem('satview-mask', JSON.stringify(maskData)); } catch { /* nic */ }
+  } catch (e) {
+    console.warn(e);
+    $('obstStatus').hidden = false; $('obstStatus').textContent = t('obs3d.error', { msg: e.message || e });
+    maskBusy = false; return;
+  }
+  maskBusy = false;
+  renderObst(); tick(true); updateLocal(true);
+}
+
+function askConsent() {
+  return new Promise(ok => {
+    if (state.consent3d) return ok(true);
+    $('consent').hidden = false;
+    const done = (v) => { $('consent').hidden = true; $('consentOk').onclick = $('consentNo').onclick = null; ok(v); };
+    $('consentOk').onclick = () => { state.consent3d = true; persist(); done(true); };
+    $('consentNo').onclick = () => done(false);
+  });
+}
+
+async function openLocal() {
+  if (isRegion()) { showTab('dish'); $('obstStatus').hidden = false; $('obstStatus').textContent = t('obs3d.needLoc'); $('locPanel').hidden = false; return false; }
+  if (!(await askConsent())) return false;
+  if (!local && !localLoading) {
+    localLoading = true;
+    $('local3d').hidden = false;
+    $('loading').hidden = false; $('loading').textContent = t('obs3d.loading');
+    try {
+      local = await initLocal3D($('local3d'), { lat: state.obs.lat, lon: state.obs.lon, bearing: dishParams().az });
+    } catch (e) {
+      console.warn(e);
+      $('loading').textContent = t('globe.error', { msg: e.message || e });
+      setTimeout(() => { $('loading').hidden = true; }, 4000);
+      localLoading = false; $('local3d').hidden = true;
+      return false;
+    }
+    localLoading = false; $('loading').hidden = true;
+  }
+  return true;
+}
+
 async function showView(view) {
+  if (view === 'local' && !(await openLocal())) return;
   state.view = view;
   document.querySelectorAll('#viewSwitch button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
   $('globe').hidden = view !== 'globe';
+  $('local3d').hidden = view !== 'local';
+  $('localHint').hidden = view !== 'local';
+  clearTimeout(showView.hintTimer);
+  if (view === 'local') showView.hintTimer = setTimeout(() => { $('localHint').hidden = true; }, 10000);
   if (view === 'globe' && !globe && !globeLoading) {
     globeLoading = true;
     $('loading').hidden = false; $('loading').textContent = t('globe.loading');
@@ -876,26 +1076,31 @@ async function showView(view) {
     $('loading').hidden = true;
   }
   if (view === 'map') { map.invalidateSize(); resizeCanvas(); }
-  else globe?.resize();
+  else if (view === 'globe') globe?.resize();
+  else if (view === 'local') {
+    local.resize(); local.setObserver(state.obs.lat, state.obs.lon);
+    if (!maskMatches()) computeObstructions();
+  }
   tick(true);
+  updateLocal(true);
 }
 
 let lastUi = 0;
 function tick(force = false) {
   const date = simNow();
   propagateAll(date);
-  computeCandidates();
+  computeCandidates(date);
   const s = state.selected;
   if (s && (passesFor !== s.id || (passes.length && passes[passes.length - 1].end < date.getTime()))) {
     passes = computePasses(s, date); passesFor = s.id;
   }
   if (s && s.ok) selCircle.setLatLng([s.lat, s.lon]).setRadius(coverageRadius(s.alt, state.minEl) * 1000);
-  if (state.view === 'map') draw(); else updateGlobe(date);
+  if (state.view === 'map') draw(); else if (state.view === 'globe') updateGlobe(date); else updateLocal();
   drawSky();
   renderDish(date);
   if (force || Date.now() - lastUi > 900) {
     lastUi = Date.now();
-    renderTable(); renderSelected(); renderStatus();
+    renderTable(); renderSelected(); renderStatus(); renderObst();
     $('clockLocal').textContent = date.toLocaleString(getLang(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     $('clockUtc').textContent = date.toISOString().slice(11, 19) + ' ' + t('time.utc');
   }
@@ -1024,9 +1229,11 @@ function initUI() {
   const onDish = () => {
     const num = (id, lo, hi) => { const v = parseFloat($(id).value.replace(',', '.')); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null; };
     state.dish = { on: $('dishOn').checked, az: num('dishAz', 0, 360), el: num('dishEl', 0, 90), fov: num('dishFov', 20, 160) || 100 };
-    persist(); renderLocation(); tick(true);
+    servingSlot = null; persist(); renderLocation(); tick(true);
   };
   ['dishOn', 'dishAz', 'dishEl', 'dishFov'].forEach(id => $(id).addEventListener('input', onDish));
+  $('localHint').addEventListener('click', () => { $('localHint').hidden = true; });
+  $('serveCard').addEventListener('click', () => { if (serving) selectSat(serving, true); });
   $('candList').addEventListener('click', e => { const li = e.target.closest('li[data-id]'); if (li) selectSat(sats.find(s => s.id === +li.dataset.id), true); });
 
   $('speedBtns').addEventListener('click', e => {
@@ -1060,6 +1267,14 @@ function initUI() {
     $('loading').hidden = false; $('loading').textContent = t('loading');
     await loadGroups(true); $('loading').hidden = true;
   };
+  $('antH').addEventListener('change', () => {
+    const v = parseFloat($('antH').value.replace(',', '.'));
+    if (isFinite(v) && v >= 0 && v <= 300) { state.obst.antH = Math.round(v * 10) / 10; persist(); renderObst(); tick(true); }
+  });
+  $('obstUse').addEventListener('change', e => { state.obst.use = e.target.checked; persist(); tick(true); });
+  $('btnObst').onclick = () => showView('local');
+  $('btnObstRe').onclick = async () => { if (await openLocal()) { if (state.view !== 'local') await showView('local'); computeObstructions(); } };
+  $('btnObstClear').onclick = () => { maskData = null; try { localStorage.removeItem('satview-mask'); } catch { /* nic */ } renderObst(); tick(true); };
   $('viewSwitch').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b && b.dataset.view !== state.view) showView(b.dataset.view); });
   document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
 }

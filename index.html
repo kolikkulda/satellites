@@ -93,6 +93,13 @@
 
     <!-- MŮJ STARLINK -->
     <div class="tabpanel" id="tab-dish" hidden>
+      <button type="button" class="servecard" id="serveCard" data-state="off">
+        <span class="servelabel" data-i18n="serve.title"></span>
+        <span class="servename" id="serveName">—</span>
+        <span class="serveinfo" id="serveInfo"></span>
+        <span class="servevia" id="serveVia"></span>
+      </button>
+      <p class="hint" data-i18n="serve.how"></p>
       <p class="lead" data-i18n="dish.intro"></p>
       <label class="switch"><input type="checkbox" id="dishOn"><span data-i18n="dish.enable"></span></label>
       <div class="dishfields">
@@ -121,6 +128,27 @@
         <div class="bar"><i id="hoBar"></i></div>
         <p class="hint" data-i18n="dish.nextNote"></p>
       </div>
+
+      <section class="obst">
+        <h3 data-i18n="obs3d.title"></h3>
+        <p class="hint" data-i18n="obs3d.intro"></p>
+        <div class="field">
+          <label for="antH" data-i18n="obs3d.antH"></label>
+          <input id="antH" type="text" inputmode="decimal" autocomplete="off">
+        </div>
+        <div class="row btns">
+          <button id="btnObst" class="primary" data-i18n="obs3d.btn"></button>
+        </div>
+        <label class="switch small" id="obstUseL" hidden><input type="checkbox" id="obstUse" checked><span data-i18n="obs3d.use"></span></label>
+        <p class="obststatus" id="obstStatus" hidden></p>
+        <p class="pct" id="obstPct" hidden></p>
+        <p class="hint" id="obstPctApp" hidden data-i18n="obs3d.pctApp"></p>
+        <p class="hint" data-i18n="obs3d.limits"></p>
+        <div class="row btns" id="obstBtns" hidden>
+          <button id="btnObstRe" data-i18n="obs3d.recompute"></button>
+          <button id="btnObstClear" class="ghost" data-i18n="obs3d.clear"></button>
+        </div>
+      </section>
 
       <h3><span data-i18n="dish.candidates"></span> <span class="badge" id="candN">0</span></h3>
       <ul id="candList" class="list click"></ul>
@@ -181,6 +209,19 @@
     <div id="viewSwitch" class="float" role="tablist">
       <button data-view="map" class="on" data-i18n="view.map"></button>
       <button data-view="globe" data-i18n="view.globe"></button>
+      <button data-view="local" data-i18n="view.local"></button>
+    </div>
+    <div id="local3d" hidden></div>
+    <div id="localHint" class="float" hidden data-i18n="local.hint"></div>
+    <div id="consent" hidden>
+      <div class="consentbox" role="dialog" aria-modal="true" aria-labelledby="consentT">
+        <h2 id="consentT" data-i18n="obs3d.consentTitle"></h2>
+        <p data-i18n="obs3d.consent"></p>
+        <div class="row btns">
+          <button id="consentOk" class="primary" data-i18n="obs3d.ok"></button>
+          <button id="consentNo" data-i18n="obs3d.cancel"></button>
+        </div>
+      </div>
     </div>
     <canvas id="satCanvas"></canvas>
     <div id="sky" class="float">
@@ -194,6 +235,8 @@
       <div><i style="background:#ff7ab6"></i><span data-i18n="legend.slPolar"></span></div>
       <div><i class="ring" style="border-color:#ff8c42"></i><span data-i18n="legend.gw"></span></div>
       <div><i class="ring" style="border-color:#c084fc"></i><span data-i18n="legend.pop"></span></div>
+      <div id="legMask" hidden><i style="background:#5b6475;border-radius:2px"></i><span data-i18n="legend.mask"></span></div>
+      <div id="legServe" hidden><i style="background:#3ddc84"></i><span data-i18n="legend.serve"></span></div>
       <div id="legCand" hidden><i class="ring" style="border-color:#ffd166"></i><span data-i18n="legend.cand"></span></div>
     </div>
     <div id="timebar" class="float">

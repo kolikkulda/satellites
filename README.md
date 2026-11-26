@@ -12,6 +12,8 @@ Languages: English, Čeština, Deutsch, Polski, Slovenčina, Español, Français
 - Sky view (azimuth and elevation) and a list of satellites above you, with distance, altitude, speed, launch and next passes.
 - Starlink ground gateways and internet points of presence, with the gateways each satellite can see.
 - **My Starlink**: enter your dish direction (from *Debug data* in the Starlink app) to see its field of view, the likely serving satellites and a countdown to the next 15-second handover. This is an estimate; Starlink does not publish which satellite serves you.
+- **Serving satellite estimate**: a green line to the satellite most likely serving your dish in the current 15-second slot, and which gateways it can relay to.
+- **3D surroundings and obstructions**: terrain (AWS Terrain Tiles) and buildings (OpenFreeMap) around you in 3D, a horizon mask on the sky view, blocked satellites marked, and an estimate of blocked sky in the dish field of view. Loaded only after you agree.
 - Naked-eye visibility: which satellites are sunlit while your sky is dark, with a filter and marks on upcoming passes.
 - 3D globe view (CesiumJS, loaded on demand) with satellites at their real altitude and day/night shading.
 - Accelerated time (10×, 60×, 300×) to watch the constellation move.

@@ -98,7 +98,8 @@ export async function initGlobe(el, { onPick }) {
         if (!s.ok || !s.ecf || (!f.showDim && s.el < 0)) { p.show = false; continue; }
         p.show = true;
         p.position = ecf(s.ecf, scratch);
-        if (s === f.selected) { p.pixelSize = 11; p.color = col('#ffffff'); p.outlineColor = col(s.color); p.outlineWidth = 3; }
+        if (s === f.serving) { p.pixelSize = 12; p.color = col('#3ddc84'); p.outlineColor = col('#ffffff'); p.outlineWidth = 2; }
+        else if (s === f.selected) { p.pixelSize = 11; p.color = col('#ffffff'); p.outlineColor = col(s.color); p.outlineWidth = 3; }
         else if (cand.has(s)) { p.pixelSize = s === f.candidates[0].s ? 10 : 7; p.color = col('#ffd166'); p.outlineWidth = 0; }
         else if (s.el >= f.minEl) { p.pixelSize = 6; p.color = col(s.color); p.outlineWidth = 0; }
         else if (s.el >= 0) { p.pixelSize = 4; p.color = col(s.color, 0.9); p.outlineWidth = 0; }
@@ -110,6 +111,10 @@ export async function initGlobe(el, { onPick }) {
       for (const s of f.rays) {
         lines.add({ positions: [obs, ecf(s.ecf)], width: s === f.selected ? 2.5 : 1,
           material: C.Material.fromType('Color', { color: s === f.selected ? col('#ffffff', 0.95) : col('#8cc6ff', 0.35) }) });
+      }
+      if (f.serving) {
+        lines.add({ positions: [obs, ecf(f.serving.ecf)], width: 4,
+          material: C.Material.fromType('Color', { color: col('#3ddc84', 1) }) });
       }
       for (const [s, g, strong] of f.links) {
         lines.add({ positions: [ecf(s.ecf), C.Cartesian3.fromDegrees(g.lon, g.lat, 0)], width: strong ? 2 : 1,

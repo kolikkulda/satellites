@@ -100,7 +100,7 @@ Cesta v aplikaci: Starlink → (profil/nastavení) → **Ladicí data** (Debug d
 - Odhad jasnosti (magnitudy) podle vzdálenosti a fázového úhlu, ať „okem“ nehlásí satelity, které jsou ve skutečnosti moc slabé.
 - V glóbu zobrazit zorné pole antény jako kužel.
 
-### Fáze 3 – 3D okolí a maska obzoru (rozpracováno od 26. 11. 2026)
+### Fáze 3 – 3D okolí a maska obzoru (hotovo 26. 11. 2026)
 Cíl: po zadání polohy ukázat okolí ve 3D a spočítat, kde terén a budovy zakrývají oblohu.
 
 **Ověřené zdroje (26. 11. 2026):**
@@ -110,10 +110,23 @@ Cíl: po zadání polohy ukázat okolí ve 3D a spočítat, kde terén a budovy 
 
 **Návrh:**
 - `horizon.js`: načte dlaždice terénu z12 v okruhu ~8 km, `elevAt(lat, lon)` s bilineární interpolací. `computeMask()` pro každý azimut 0–359° projde paprsek 30 m – 8 km a vezme max. elevační úhel terénu (korekce zakřivení Země s refrakcí, R_eff = 4/3 R). Budovy (z MapLibre `querySourceFeatures`, ~1 km kolem) se přidají přes zhuštěné hrany polygonů; budova, ve které stojí pozorovatel, se ignoruje (anténa bývá na její střeše).
-- `local3d.js`: MapLibre s podkladem Esri, terénem a vytaženými budovami, pohled natočený ve směru antény. Žlutá plocha = oblast, nad kterou anténa hledí (průmět kužele do výšky 60 m nad anténou), žluté čáry = směry ke kandidátům.
+- `local3d.js`: MapLibre s podkladem Esri, terénem a vytaženými budovami, pohled natočený ve směru antény. Žlutá plocha = oblast, nad kterou anténa hledí (průmět kužele do výšky 150 m nad anténou), žluté čáry = směry ke kandidátům.
 - Souhlas: před prvním načtením panel v aplikaci (ne `confirm()`), který vysvětlí, že poskytovatelé dlaždic uvidí přibližnou oblast. Souhlas se pamatuje v `localStorage`.
 - Výsledek: maska v `localStorage` vázaná na polohu (zaokrouhlenou na 0,01°) a výšku antény. Maska na obloze jako šedá plocha, zakryté satelity duté a označené „zakrytý“, kandidáti antény vynechávají zakryté satelity. Odhad % zakryté oblohy v zorném poli antény pro srovnání s aplikací Starlink (Ladicí data → Překážky).
 - Omezení, která říct uživateli: stromy a drobné překážky v datech nejsou, výšky budov z OSM bývají odhadnuté, s polohou podle regionu to nedává smysl.
+
+**Implementováno (26. 11. 2026):**
+- [x] `horizon.js` (`loadDem`, `computeMask`, `blockedFraction`) – terén z12 do 8 km (`MASK_RADIUS`), budovy z MapLibre. Na zkušebním bodě v Praze (50,09; 14,42; anténa 3 m) to trvá asi 3 s, 8 341 budov, výsledek 38,5 % zakryté oblohy v zorném poli.
+- [x] `local3d.js` – MapLibre 5.24.1, budovy průhledné (0,62), **3D paprsky** jako řada malých kvádrů (fill-extrusion) od antény do 150 m nad ní. Čáry a plochy na zemi MapLibre při terénu kreslí pod budovy, proto paprsky jako kvádry. Pro ladění je mapa na `document.getElementById('local3d').mlMap`.
+- [x] Souhlas `#consent` (pamatuje se jako `consent3d`), maska v `localStorage['satview-mask']`, „Brát překážky v úvahu“, „Přepočítat“, „Smazat překážky“, výška antény (`obst.antH`, výchozí 3 m).
+- [x] Na obloze šedá maska, zakryté satelity jako prázdná kolečka, odznak „zakrytý“ v seznamu, řádek „Výhled“ v detailu; kandidáti vynechávají zakryté satelity.
+
+### Obsluhující satelit (odhad) – hotovo 26. 11. 2026
+Martin se ptal, „od kterého Starlinku chytám internet“. Vysvětlení v UI: anténa komunikuje vždy s **jedním** satelitem, plánovač ho přiděluje na 15 s, pak může dát jiný nebo nechat stejný.
+- `serving` v `app.js`: na začátku každého úseku (sekundy :12, :27, :42, :57) se vybere kandidát nejblíž ose antény a drží se do konce úseku. Uprostřed úseku se mění jen tehdy, když satelit zmizí ze zorného pole nebo se schová za překážku.
+- Zobrazení: **zelená** (`SERVE_COLOR` #3ddc84) čára od pozorovatele na mapě, na obloze, v glóbu i ve 3D (zelený paprsek), popisek „tvůj internet (odhad)“, karta „Teď tě nejspíš obsluhuje“ v záložce Můj Starlink s časem přidělení a bránami, na které satelit může posílat data (případně laser).
+- Kandidáti mají žlutou barvu, obsluhující zelenou.
+- Možné zlepšení: věrnější výběr (komunita pozoruje, že plánovač preferuje satelity severně od antény a s velkou elevací, a vyhýbá se geostacionárnímu pásu), ověření proti mapě překážek z antény.
 
 ### Nápady na později
 - Domácí pomocník: malý program v domácí síti, který čte data přímo z antény (gRPC na 192.168.100.1:9200) – mapu překážek a směr antény – a určí obsluhující satelit přesněji. Web ho nemůže číst sám (blokuje to prohlížeč a je to tak správně).

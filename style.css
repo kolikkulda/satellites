@@ -215,3 +215,31 @@ tbody tr.low { opacity: .5; }
 #globe .cesium-viewer-bottom { display: none; }
 #globeCredit { position: absolute; right: 8px; bottom: 4px; z-index: 2; font-size: 11px; color: #9aa3b5; }
 #globeCredit a { color: #9aa3b5; }
+
+/* fáze 3: 3D okolí, souhlas, překážky */
+#local3d { position: absolute; inset: 0; z-index: 650; background: #000; }
+#localHint { left: 50%; transform: translateX(-50%); bottom: 84px; padding: 6px 12px; font-size: 12px; color: var(--muted); max-width: min(520px, 90%); text-align: center; }
+#consent { position: absolute; inset: 0; z-index: 1100; display: grid; place-items: center; background: rgba(6,9,16,.7); padding: 16px; }
+.consentbox { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; max-width: 440px; display: grid; gap: 10px; }
+.consentbox p { margin: 0; color: var(--muted); }
+.obst { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 8px; }
+.obst h3 { margin: 0; }
+.obst .row { margin: 0; }
+.obststatus { margin: 0; font-size: 12.5px; }
+.pct { margin: 0; font-size: 15px; font-weight: 600; color: var(--cand); }
+.blk { display: inline-block; font-size: 10.5px; line-height: 1; padding: 2px 5px; border-radius: 99px; margin-left: 6px;
+  background: rgba(150,160,180,.15); color: #b9c2d3; border: 1px solid rgba(150,160,180,.4); vertical-align: 1px; }
+.maplibregl-ctrl-attrib { font-size: 10.5px; }
+@media (max-width: 860px) { #localHint { bottom: 64px; font-size: 11px; } #sky { top: calc(52px + env(safe-area-inset-top, 0px)); } }
+#localHint { cursor: pointer; }
+
+/* obsluhující satelit */
+.servecard { display: grid; gap: 2px; text-align: left; width: 100%; padding: 10px 12px; border-radius: 12px;
+  background: rgba(61,220,132,.08); border: 1px solid rgba(61,220,132,.45); cursor: pointer; }
+.servecard:hover { border-color: #3ddc84; }
+.servecard[data-state="off"], .servecard[data-state="none"] { background: var(--card); border-color: var(--line); cursor: default; }
+.servelabel { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #3ddc84; font-weight: 600; }
+.servecard[data-state="off"] .servelabel, .servecard[data-state="none"] .servelabel { color: var(--muted); }
+.servename { font-size: 18px; font-weight: 700; }
+.serveinfo, .servevia { font-size: 12.5px; color: var(--muted); }
+.list .serving { color: #3ddc84; font-weight: 600; }
