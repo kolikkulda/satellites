@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Satellites Overhead</title>
+<meta name="description" content="Starlink and other satellites over your location in real time: sky view, ground gateways and the satellites your dish can use. / Starlink a další satelity nad tebou v reálném čase.">
+<meta name="theme-color" content="#0a0e16">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230d1a2e'/%3E%3Cellipse cx='32' cy='32' rx='26' ry='10' fill='none' stroke='%235aa9ff' stroke-width='3' transform='rotate(-30 32 32)'/%3E%3Ccircle cx='50' cy='20' r='5' fill='%23ffd166'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%235aa9ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <header class="brand">
+      <div class="logo" aria-hidden="true"><span></span></div>
+      <div class="brandtext">
+        <h1 data-i18n="app.title">Satellites Overhead</h1>
+        <p class="sub" data-i18n="app.sub"></p>
+      </div>
+      <select id="lang" aria-label="Language"></select>
+    </header>
+
+    <section class="locbar">
+      <div class="locrow">
+        <div class="locinfo">
+          <span class="lockind" id="locKind"></span>
+          <span class="locname" id="locName"></span>
+        </div>
+        <button id="btnRefine" type="button" class="primary" data-i18n="loc.refine"></button>
+      </div>
+      <div id="locPanel" hidden>
+        <div class="search">
+          <input id="placeQuery" type="search" autocomplete="off" data-i18n-ph="loc.search">
+          <ul id="placeResults" class="results" hidden></ul>
+        </div>
+        <div class="row coords">
+          <label><span data-i18n="loc.lat"></span><input id="lat" type="number" step="0.01" min="-90" max="90"></label>
+          <label><span data-i18n="loc.lon"></span><input id="lon" type="number" step="0.01" min="-180" max="180"></label>
+        </div>
+        <div class="row btns">
+          <button id="btnGeo" type="button" data-i18n="loc.geo"></button>
+          <button id="btnPick" type="button" data-i18n="loc.pick"></button>
+          <button id="btnForget" type="button" class="ghost" data-i18n="loc.forget"></button>
+        </div>
+        <p class="hint" data-i18n="loc.hint"></p>
+        <p class="hint" data-i18n="loc.searchNote"></p>
+      </div>
+    </section>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="sky" class="on" data-i18n="tab.sky"></button>
+      <button role="tab" data-tab="dish" data-i18n="tab.dish"></button>
+      <button role="tab" data-tab="gw" data-i18n="tab.gw"></button>
+      <button role="tab" data-tab="settings" data-i18n="tab.settings"></button>
+    </nav>
+
+    <!-- NAD TEBOU -->
+    <div class="tabpanel" id="tab-sky">
+      <div class="stats">
+        <div class="stat"><b id="stGood">0</b><span id="stGoodL"></span></div>
+        <div class="stat"><b id="stStarlink">0</b><span data-i18n="stat.starlink"></span></div>
+        <div class="stat"><b id="stHorizon">0</b><span data-i18n="stat.horizon"></span></div>
+      </div>
+
+      <section class="card sel" id="selCard" hidden>
+        <div class="selhead">
+          <i id="selDot"></i><h2 id="selName">–</h2>
+          <button id="selClose" class="x" data-i18n-title="sel.close">✕</button>
+        </div>
+        <dl id="selInfo" class="kv"></dl>
+        <h3 id="selPassesT"></h3>
+        <ul id="selPasses" class="list"></ul>
+        <h3 data-i18n="sel.gws"></h3>
+        <ul id="selGws" class="list click"></ul>
+      </section>
+
+      <input id="filter" type="search" data-i18n-ph="sky.searchPh">
+      <div class="tablewrap">
+        <table id="visTable">
+          <thead><tr><th data-i18n="col.name"></th><th data-i18n="col.el"></th><th data-i18n="col.az"></th><th data-i18n="col.range"></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="hint" id="visHint"></p>
+    </div>
+
+    <!-- MŮJ STARLINK -->
+    <div class="tabpanel" id="tab-dish" hidden>
+      <p class="lead" data-i18n="dish.intro"></p>
+      <label class="switch"><input type="checkbox" id="dishOn"><span data-i18n="dish.enable"></span></label>
+      <div class="row coords three">
+        <label><span data-i18n="dish.az"></span><input id="dishAz" type="number" min="0" max="360" step="1"></label>
+        <label><span data-i18n="dish.el"></span><input id="dishEl" type="number" min="0" max="90" step="1"></label>
+        <label><span data-i18n="dish.fov"></span><input id="dishFov" type="number" min="20" max="160" step="1"></label>
+      </div>
+      <p class="hint" data-i18n="dish.default"></p>
+      <p class="warnbox" id="dishNeedLoc" hidden data-i18n="dish.needLoc"></p>
+
+      <div class="handover">
+        <div class="hrow"><span data-i18n="dish.next"></span><b id="hoSec">–</b></div>
+        <div class="bar"><i id="hoBar"></i></div>
+        <p class="hint" data-i18n="dish.nextNote"></p>
+      </div>
+
+      <h3><span data-i18n="dish.candidates"></span> <span class="badge" id="candN">0</span></h3>
+      <ul id="candList" class="list click"></ul>
+      <p class="hint" data-i18n="dish.disclaimer"></p>
+
+      <details class="how">
+        <summary data-i18n="dish.how"></summary>
+        <ol>
+          <li data-i18n="dish.how1"></li>
+          <li data-i18n="dish.how2"></li>
+          <li data-i18n="dish.how3"></li>
+          <li data-i18n="dish.how4"></li>
+        </ol>
+      </details>
+    </div>
+
+    <!-- BRÁNY -->
+    <div class="tabpanel" id="tab-gw" hidden>
+      <div class="toggles">
+        <label><input type="checkbox" id="tGw" checked><span data-i18n="tog.gw"></span></label>
+        <label><input type="checkbox" id="tGwPlanned" checked><span data-i18n="tog.gwPlanned"></span></label>
+        <label><input type="checkbox" id="tPop"><span data-i18n="tog.pop"></span></label>
+        <label><input type="checkbox" id="tLinks"><span data-i18n="tog.links"></span></label>
+      </div>
+      <h3 data-i18n="gw.title"></h3>
+      <ul id="nearGws" class="list click"></ul>
+      <div class="row btns"><button id="btnAddGw" type="button" data-i18n="gw.add"></button></div>
+      <p class="hint" data-i18n="gw.note"></p>
+    </div>
+
+    <!-- NASTAVENÍ -->
+    <div class="tabpanel" id="tab-settings" hidden>
+      <label class="slider"><span data-i18n="set.minEl"></span> <b id="minElVal">25°</b>
+        <input id="minEl" type="range" min="0" max="60" step="1" value="25">
+      </label>
+      <p class="hint" data-i18n="set.minElHint"></p>
+      <h3 data-i18n="set.groups"></h3>
+      <div class="chips" id="groupChips"></div>
+      <h3 data-i18n="set.layers"></h3>
+      <div class="toggles">
+        <label><input type="checkbox" id="tRays" checked><span data-i18n="tog.rays"></span></label>
+        <label><input type="checkbox" id="tCov" checked><span data-i18n="tog.cov"></span></label>
+        <label><input type="checkbox" id="tDim" checked><span data-i18n="tog.dim"></span></label>
+      </div>
+      <h3 data-i18n="set.data"></h3>
+      <div id="status" class="status"></div>
+      <div class="row btns"><button id="btnReload" type="button" data-i18n="set.reload"></button></div>
+      <h3 data-i18n="set.about"></h3>
+      <p class="hint" data-i18n="set.privacy"></p>
+      <p class="hint" data-i18n="set.sources"></p>
+      <p class="hint" data-i18n="app.disclaimer"></p>
+    </div>
+  </aside>
+
+  <main id="mapwrap">
+    <div id="map"></div>
+    <canvas id="satCanvas"></canvas>
+    <div id="sky" class="float">
+      <div class="floathead"><span data-i18n="skyplot.title"></span><button id="skyToggle" class="x">–</button></div>
+      <canvas id="skyCanvas"></canvas>
+    </div>
+    <div id="legend" class="float">
+      <div><i style="background:#5aa9ff"></i><span data-i18n="legend.sl53"></span></div>
+      <div><i style="background:#3dd6c6"></i><span data-i18n="legend.sl43"></span></div>
+      <div><i style="background:#b48cff"></i><span data-i18n="legend.sl70"></span></div>
+      <div><i style="background:#ff7ab6"></i><span data-i18n="legend.slPolar"></span></div>
+      <div><i class="ring" style="border-color:#ff8c42"></i><span data-i18n="legend.gw"></span></div>
+      <div><i class="ring" style="border-color:#c084fc"></i><span data-i18n="legend.pop"></span></div>
+      <div id="legCand" hidden><i class="ring" style="border-color:#ffd166"></i><span data-i18n="legend.cand"></span></div>
+    </div>
+    <div id="timebar" class="float">
+      <div class="clock"><b id="clockLocal">–</b><span id="clockUtc"></span></div>
+      <div class="speed" id="speedBtns">
+        <button data-speed="1" class="on">1×</button>
+        <button data-speed="10">10×</button>
+        <button data-speed="60">60×</button>
+        <button data-speed="300">300×</button>
+        <button id="btnNow" class="ghost" data-i18n="time.now"></button>
+      </div>
+    </div>
+    <div id="pickBanner" hidden><span id="pickWhat"></span> <button id="pickCancel" data-i18n="pick.cancel"></button></div>
+    <div id="loading" data-i18n="loading"></div>
+  </main>
+</div>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
