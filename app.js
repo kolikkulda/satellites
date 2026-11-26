@@ -573,7 +573,8 @@ function drawSky() {
   const Wc = sky.clientWidth;
   if (!Wc) return;
   const dpr = window.devicePixelRatio || 1;
-  if (sky.width !== Math.round(Wc * dpr)) { sky.width = Math.round(Wc * dpr); sky.height = Math.round(Wc * dpr); }
+  const px = Math.round(Wc * dpr);
+  if (sky.width !== px || sky.height !== px) { sky.width = px; sky.height = px; }
   sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const c = Wc / 2, r = c - 15;
   sctx.clearRect(0, 0, Wc, Wc);
